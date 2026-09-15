@@ -1,4 +1,4 @@
-name: Build touchHLE
+name: Build TitaniumHLE
 
 on:
   push:
@@ -18,11 +18,11 @@ jobs:
     steps:
       # actions/checkout really doesn't work well with git-describe for some
       # reason (most likely it strips the annotation off the tag somehow).
-      - name: Checkout touchHLE
+      - name: Checkout TitaniumHLE
         shell: bash # windows :)
         run: |
           mkdir -p "$GITHUB_WORKSPACE"
-          git clone https://github.com/touchHLE/touchHLE "$GITHUB_WORKSPACE"
+          git clone https://github.com/gitsnup/titaniumHLE "$GITHUB_WORKSPACE"
           cd "$GITHUB_WORKSPACE"
           git fetch origin "$GITHUB_REF"
           git checkout "$GITHUB_SHA" # avoid race condition if branch/tag changes
@@ -98,11 +98,11 @@ jobs:
     steps:
     # actions/checkout really doesn't work well with git-describe for some
     # reason (most likely it strips the annotation off the tag somehow).
-    - name: Checkout touchHLE
+    - name: Checkout TitaniumHLE
       shell: bash # windows :)
       run: |
         mkdir -p "$GITHUB_WORKSPACE"
-        git clone https://github.com/touchHLE/touchHLE "$GITHUB_WORKSPACE"
+        git clone https://github.com/gitsnup/titaniumHLE "$GITHUB_WORKSPACE"
         cd "$GITHUB_WORKSPACE"
         git fetch origin "$GITHUB_REF"
         git checkout "$GITHUB_SHA" # avoid race condition if branch/tag changes
@@ -196,11 +196,11 @@ jobs:
     steps:
     # actions/checkout really doesn't work well with git-describe for some
     # reason (most likely it strips the annotation off the tag somehow).
-    - name: Checkout touchHLE
+    - name: Checkout TitaniumHLE
       shell: bash # windows :)
       run: |
         mkdir -p "$GITHUB_WORKSPACE"
-        git clone https://github.com/touchHLE/touchHLE "$GITHUB_WORKSPACE"
+        git clone https://github.com/gitsnup/titaniumHLE "$GITHUB_WORKSPACE"
         cd "$GITHUB_WORKSPACE"
         git fetch origin "$GITHUB_REF"
         git checkout "$GITHUB_SHA" # avoid race condition if branch/tag changes
