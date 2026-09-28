@@ -6,7 +6,7 @@
 //! `UIImageView`.
 
 use crate::frameworks::core_graphics::cg_image::CGImageRef;
-use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
+use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::frameworks::foundation::NSTimeInterval;
 use crate::objc::{
@@ -19,6 +19,8 @@ struct UIImageViewHostObject {
     superclass: super::UIViewHostObject,
     /// `UIImage*`
     image: id,
+    animation_duration: NSTimeInterval,
+    animation_repeat_count: CGFloat,
 }
 impl_HostObject_with_superclass!(UIImageViewHostObject);
 
@@ -45,6 +47,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let &UIImageViewHostObject {
         superclass: _,
         image,
+        ..
     } = env.objc.borrow(this);
     release(env, image);
     msg_super![env; this dealloc]
@@ -99,7 +102,19 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setAnimationDuration:(NSTimeInterval)duration {
-    todo_objc_setter!(this, duration);
+    env.objc.borrow_mut::<UIImageViewHostObject>(this).animation_duration = duration;
+}
+
+- (NSTimeInterval)animationDuration {
+    env.objc.borrow::<UIImageViewHostObject>(this).animation_duration
+}
+
+- (())setAnimationRepeatCount:(CGFloat)repeat_count {
+    env.objc.borrow_mut::<UIImageViewHostObject>(this).animation_repeat_count = repeat_count;
+}
+
+- (CGFloat)animationRepeatCount {
+    env.objc.borrow::<UIImageViewHostObject>(this).animation_repeat_count
 }
 
 - (())startAnimating {
