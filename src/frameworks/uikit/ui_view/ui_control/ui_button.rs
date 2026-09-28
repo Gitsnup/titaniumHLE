@@ -188,28 +188,31 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let key_ns_string = get_static_str(env, "UIButtonStatefulContent");
     let dict: id = msg![env; coder decodeObjectForKey:key_ns_string];
-    assert!(dict != nil);
-    log_dbg!("UIButtonStatefulContent dict: {}", {
-        let desc: id = msg![env; dict description];
-        to_rust_string(env, desc)
-    });
+    if dict != nil {
+        log_dbg!("UIButtonStatefulContent dict: {}", {
+            let desc: id = msg![env; dict description];
+            to_rust_string(env, desc)
+        });
 
-    // It's not entirely clear how the state information is encoded
-    // in this dict.
-    // TODO: support decoding properties of other states
-    let key_idx: id = msg_class![env; NSNumber numberWithLongLong:0i64];
-    let button_content: id = msg![env; dict objectForKey:key_idx];
+        // It's not entirely clear how the state information is encoded
+        // in this dict.
+        // TODO: support decoding properties of other states
+        let key_idx: id = msg_class![env; NSNumber numberWithLongLong:0i64];
+        let button_content: id = msg![env; dict objectForKey:key_idx];
 
-    let title: id = msg![env; button_content title];
-    if title != nil {
-        log_dbg!("UIButton initWithCoder: title {}", to_rust_string(env, title));
-        () = msg![env; this setTitle:title forState:UIControlStateNormal];
-    }
+        if button_content != nil {
+            let title: id = msg![env; button_content title];
+            if title != nil {
+                log_dbg!("UIButton initWithCoder: title {}", to_rust_string(env, title));
+                () = msg![env; this setTitle:title forState:UIControlStateNormal];
+            }
 
-    let title_color: id = msg![env; button_content titleColor];
-    if title_color != nil {
-        log_dbg!("UIButton initWithCoder: title_color {}", to_rust_string(env, title_color));
-        () = msg![env; this setTitleColor:title_color forState:UIControlStateNormal];
+            let title_color: id = msg![env; button_content titleColor];
+            if title_color != nil {
+                log_dbg!("UIButton initWithCoder: title_color {}", to_rust_string(env, title_color));
+                () = msg![env; this setTitleColor:title_color forState:UIControlStateNormal];
+            }
+        }
     }
 
     // TODO: decode other properties
@@ -410,6 +413,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 // Undocumented classes used by NIBs
+
+@implementation UIPushButton: UIButton
+@end
 
 @implementation UIRoundedRectButton: UIButton
 // TODO: rendering of round corners
