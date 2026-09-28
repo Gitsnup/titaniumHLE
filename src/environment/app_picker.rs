@@ -535,12 +535,14 @@ fn app_picker_inner(
 
     fn update_quick_option_buttons(env: &mut Environment, buttons: &[id], selected_idx: usize) {
         for (idx, &button) in buttons.iter().enumerate() {
-            let color: id = if idx == selected_idx {
-                msg_class![env; UIColor magentaColor]
-            } else {
-                msg_class![env; UIColor grayColor]
-            };
-            () = msg![env; button setBackgroundColor:color];
+            let background = make_frutiger_button_image(env, idx == selected_idx);
+            () = msg![env; button setBackgroundImage:background
+                                          forState:UIControlStateNormal];
+            release(env, background);
+            // White text for readability on the darker bottom half
+            let text_color: id = msg_class![env; UIColor whiteColor];
+            () = msg![env; button setTitleColor:text_color
+                                     forState:UIControlStateNormal];
         }
     }
     fn update_scale_hack_buttons(env: &mut Environment, buttons: &[id], value: Option<NonZeroU32>) {
@@ -932,6 +934,100 @@ fn make_icon_from_glyph(
         (10.0 / 57.0) * ICON_SIZE.width,
         /* four_corners: */ true,
         /* add_sheen: */ true,
+    );
+    CGContextRelease(env, context);
+
+    let ui_image: id = msg_class![env; UIImage imageWithCGImage:cg_image];
+    release(env, cg_image);
+
+    ui_image
+}
+
+/// Frutiger Aero–style glossy button background, generated at a canonical
+/// size and stretched to the button's bounds by the background image view.
+/// The gradient, top sheen and rounded corners are drawn per pixel row, since
+/// the CGContext implementation has no gradient primitives.
+fn make_frutiger_button_image(env: &mut Environment, selected: bool) -> id {
+    const WIDTH: u32 = 64;
+    const HEIGHT: u32 = 30;
+
+    let color_space = CGColorSpaceCreateDeviceRGB(env);
+    let context = CGBitmapContextCreate(
+        env,
+        Ptr::null(),
+        WIDTH,
+        HEIGHT,
+        8,
+        4 * WIDTH,
+        color_space,
+        kCGImageAlphaPremultipliedLast,
+    );
+    UIGraphicsPushContext(env, context);
+
+    // Compensate for row order inversion (y=0 becomes the top row)
+    CGContextTranslateCTM(env, context, 0.0, HEIGHT as CGFloat);
+    CGContextScaleCTM(env, context, 1.0, -1.0);
+
+    let (top, bottom) = if selected {
+        // Shiny aqua: light cyan to deep blue
+        ((0.75, 0.95, 1.0), (0.03, 0.42, 0.85))
+    } else {
+        // Frosted graphite: pale silver to slate
+        ((0.88, 0.91, 0.95), (0.36, 0.43, 0.53))
+    };
+    for y in 0..HEIGHT {
+        let t = y as f32 / (HEIGHT - 1) as f32;
+        CGContextSetRGBFillColor(
+            env,
+            context,
+            (top.0 + (bottom.0 - top.0) * t) as CGFloat,
+            (top.1 + (bottom.1 - top.1) * t) as CGFloat,
+            (top.2 + (bottom.2 - top.2) * t) as CGFloat,
+            1.0,
+        );
+        CGContextFillRect(
+            env,
+            context,
+            CGRect {
+                origin: CGPoint {
+                    x: 0.0,
+                    y: y as CGFloat,
+                },
+                size: CGSize {
+                    width: WIDTH as CGFloat,
+                    height: 1.0,
+                },
+            },
+        );
+    }
+    // The classic glass sheen: a white fade across the top half
+    for y in 0..HEIGHT / 2 {
+        let t = y as f32 / (HEIGHT / 2) as f32;
+        let alpha = 0.55 * (1.0 - t) + 0.03;
+        CGContextSetRGBFillColor(env, context, 1.0, 1.0, 1.0, alpha as CGFloat);
+        CGContextFillRect(
+            env,
+            context,
+            CGRect {
+                origin: CGPoint {
+                    x: 0.0,
+                    y: y as CGFloat,
+                },
+                size: CGSize {
+                    width: WIDTH as CGFloat,
+                    height: 1.0,
+                },
+            },
+        );
+    }
+
+    UIGraphicsPopContext(env);
+
+    let cg_image = CGBitmapContextCreateImage(env, context);
+    cg_image::borrow_image_mut(&mut env.objc, cg_image).round_corners(
+        5.0,
+        /* four_corners: */ true,
+        /* add_sheen: */ false,
     );
     CGContextRelease(env, context);
 
