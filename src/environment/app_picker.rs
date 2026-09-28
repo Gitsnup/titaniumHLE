@@ -571,7 +571,9 @@ fn app_picker_inner(
             let background = make_frutiger_button_image(env, idx == selected_idx);
             () = msg![env; button setBackgroundImage:background
                                           forState:UIControlStateNormal];
-            release(env, background);
+            // Note: make_frutiger_button_image returns an autoreleased UIImage
+            // and setBackgroundImage:forState: retains it, so it must NOT be
+            // released here.
             // White text for readability on the darker bottom half
             let text_color: id = msg_class![env; UIColor whiteColor];
             () = msg![env; button setTitleColor:text_color

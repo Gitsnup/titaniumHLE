@@ -250,7 +250,8 @@ fn update(env: &mut Environment, this: id) {
         },
     );
     () = msg![env; back setImage:track_image];
-    release(env, track_image);
+    // make_switch_image returns an autoreleased UIImage and setImage: retains
+    // it, so it must NOT be released here.
 
     () = msg![env; label_on setHidden:(!is_on)];
     () = msg![env; label_off setHidden:is_on];
@@ -272,12 +273,10 @@ fn init_common(env: &mut Environment, this: id) -> id {
     let back: id = msg_class![env; UIImageView new];
     let track_image = make_switch_image(env, SwitchImageKind::TrackOff);
     () = msg![env; back setImage:track_image];
-    release(env, track_image);
 
     let thumb: id = msg_class![env; UIImageView new];
     let thumb_image = make_switch_image(env, SwitchImageKind::Thumb);
     () = msg![env; thumb setImage:thumb_image];
-    release(env, thumb_image);
 
     let label_on: id = msg_class![env; UILabel new];
     let clear_color: id = msg_class![env; UIColor clearColor];
