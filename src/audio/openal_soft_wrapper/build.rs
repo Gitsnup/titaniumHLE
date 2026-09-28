@@ -47,6 +47,11 @@ fn main() {
         build.define("ALSOFT_UTILS", "OFF");
         build.define("ALSOFT_NO_CONFIG_UTIL", "ON");
         build.define("ALSOFT_EXAMPLES", "OFF");
+        // Disable the sndio backend: on systems where sndio's headers live in
+        // a system-wide include dir, that dir gets added to the include path
+        // before common/, and glibc's C11 <threads.h> shadows
+        // vendor/openal-soft/common/threads.h, breaking the build.
+        build.define("ALSOFT_BACKEND_SNDIO", "OFF");
 
         let openal_soft_out = build.build();
 
@@ -56,8 +61,8 @@ fn main() {
 
         // Some dependencies of OpenAL Soft.
         if os.eq_ignore_ascii_case("linux") {
-            // OpenAL on Linux depends on sndio, needs to be dynamically linked
-            println!("cargo:rustc-link-lib=dylib=sndio");
+            // sndio backend is disabled above (see ALSOFT_BACKEND_SNDIO), so
+            // there is no need to link libsndio.
         }
         if os.eq_ignore_ascii_case("android") {
             println!("cargo:rustc-link-lib=dylib=OpenSLES");
