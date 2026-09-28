@@ -6,7 +6,7 @@
 //! `UIButton`.
 
 use super::{UIControlState, UIControlStateNormal};
-use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect};
+use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSInteger;
 use crate::frameworks::uikit::ui_font::UITextAlignmentCenter;
@@ -252,11 +252,24 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())layoutSubviews {
     let label = env.objc.borrow_mut::<UIButtonHostObject>(this).title_label;
     let background_image_view = env.objc.borrow_mut::<UIButtonHostObject>(this).background_image_view;
+    let image_view = env.objc.borrow_mut::<UIButtonHostObject>(this).image_view;
     let bounds: CGRect = msg![env; this bounds];
 
     () = msg![env; background_image_view setFrame:bounds];
     () = msg![env; label setFrame:bounds];
-    // TODO: layout for image
+    // Center the image in the button bounds, preserving the image's size.
+    let image: id = msg![env; image_view image];
+    if image != nil {
+        let image_size: CGSize = msg![env; image size];
+        let image_frame = CGRect {
+            origin: CGPoint {
+                x: (bounds.size.width - image_size.width) / 2.0,
+                y: (bounds.size.height - image_size.height) / 2.0,
+            },
+            size: image_size,
+        };
+        () = msg![env; image_view setFrame:image_frame];
+    }
 
 }
 
