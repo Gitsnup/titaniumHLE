@@ -172,7 +172,8 @@ fn make_switch_image(env: &mut Environment, kind: SwitchImageKind) -> id {
         },
     };
     match kind {
-        // Aqua half on the left (where the "ON" label sits), silver on the right
+        // Aqua half on the left (where the "ON" label sits),
+        // silver on the right
         SwitchImageKind::TrackOn => {
             let half = CGSize {
                 width: width_f / 2.0,
