@@ -24,7 +24,9 @@ pub fn branding() -> &'static str {
     {
         return "";
     }
-    if (GITHUB_REPOSITORY, GITHUB_REF_NAME) == (Some("gitsnup/titaniumHLE"), Some("trunk")) {
+    if GITHUB_REPOSITORY.is_some_and(|r| r.eq_ignore_ascii_case("gitsnup/titaniumHLE"))
+        && GITHUB_REF_NAME == Some("trunk")
+    {
         "PREVIEW"
     } else {
         "UNOFFICIAL"
