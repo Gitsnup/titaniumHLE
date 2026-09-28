@@ -25,6 +25,7 @@ use crate::objc::{
 
 pub type UITableViewStyle = NSInteger;
 pub const UITableViewStylePlain: UITableViewStyle = 0;
+#[expect(dead_code)] // Doodle Jump only uses Plain; Grouped kept for completeness
 pub const UITableViewStyleGrouped: UITableViewStyle = 1;
 
 #[derive(Default)]
