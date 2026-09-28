@@ -149,6 +149,12 @@ struct AppPickerDelegateHostObject {
     analog_stick_tilt_controls: Option<bool>,
     network: Option<bool>,
     fullscreen: Option<bool>,
+    print_fps: Option<bool>,
+    force_composition: Option<bool>,
+    ignore_gl_errors: Option<bool>,
+    error_popups: Option<bool>,
+    quick_options_prev_page: bool,
+    quick_options_next_page: bool,
 }
 impl HostObject for AppPickerDelegateHostObject {}
 
@@ -236,6 +242,28 @@ const CLASSES: ClassExports = objc_classes! {
 - (())fullscreen:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).fullscreen = Some(switch_state);
+}
+- (())printFps:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).print_fps = Some(switch_state);
+}
+- (())forceComposition:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).force_composition = Some(switch_state);
+}
+- (())ignoreGlErrors:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ignore_gl_errors = Some(switch_state);
+}
+- (())errorPopups:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).error_popups = Some(switch_state);
+}
+- (())quickOptionsPrevPage {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_prev_page = true;
+}
+- (())quickOptionsNextPage {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_next_page = true;
 }
 
 - (())openFileManager {
@@ -400,7 +428,7 @@ fn app_picker_inner(
         let text = ns_string::from_rust_string(
             env,
             format!(
-                "touchHLE {}{}{}",
+                "titaniumHLE {}{}{}",
                 crate::branding(),
                 if crate::branding().is_empty() {
                     ""
@@ -532,6 +560,11 @@ fn app_picker_inner(
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
     let mut quick_options_analog_stick_tilt_controls = true;
     let mut quick_options_network = false;
+    let mut quick_options_print_fps = false;
+    let mut quick_options_force_composition = false;
+    let mut quick_options_ignore_gl_errors = false;
+    let mut quick_options_error_popups = true;
+    let mut quick_options_page = 0usize;
 
     fn update_quick_option_buttons(env: &mut Environment, buttons: &[id], selected_idx: usize) {
         for (idx, &button) in buttons.iter().enumerate() {
@@ -649,6 +682,24 @@ fn app_picker_inner(
             () = msg![env; (quick_options_stuff.main_view) setHidden:false];
         } else if std::mem::take(&mut host_obj.quick_options_hide) {
             () = msg![env; (quick_options_stuff.main_view) setHidden:true];
+        } else if std::mem::take(&mut host_obj.quick_options_prev_page) {
+            if quick_options_page != 0 {
+                quick_options_page -= 1;
+                update_quick_options_page(env, &quick_options_stuff, quick_options_page);
+            }
+        } else if std::mem::take(&mut host_obj.quick_options_next_page) {
+            if quick_options_page + 1 < quick_options_stuff.page_views.len() {
+                quick_options_page += 1;
+                update_quick_options_page(env, &quick_options_stuff, quick_options_page);
+            }
+        } else if let Some(enabled) = std::mem::take(&mut host_obj.print_fps) {
+            quick_options_print_fps = enabled;
+        } else if let Some(enabled) = std::mem::take(&mut host_obj.force_composition) {
+            quick_options_force_composition = enabled;
+        } else if let Some(enabled) = std::mem::take(&mut host_obj.ignore_gl_errors) {
+            quick_options_ignore_gl_errors = enabled;
+        } else if let Some(enabled) = std::mem::take(&mut host_obj.error_popups) {
+            quick_options_error_popups = enabled;
         } else if std::mem::take(&mut host_obj.scale_hack_default) {
             quick_options_scale_hack = None;
             update_scale_hack_buttons(
@@ -747,6 +798,18 @@ fn app_picker_inner(
     }
     if quick_options_network {
         option_args.push("--allow-network-access".to_string());
+    }
+    if quick_options_print_fps {
+        option_args.push("--print-fps".to_string());
+    }
+    if quick_options_force_composition {
+        option_args.push("--force-composition".to_string());
+    }
+    if quick_options_ignore_gl_errors {
+        option_args.push("--ignore-gl-errors".to_string());
+    }
+    if !quick_options_error_popups {
+        option_args.push("--no-error-popup".to_string());
     }
 
     // Return the environment so some parts of it can be salvaged.
@@ -1358,6 +1421,8 @@ fn change_copyright_page(
 
 struct QuickOptionsStuff {
     main_view: id,
+    page_views: Vec<id>,
+    page_label: id,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
 }
@@ -1387,7 +1452,127 @@ fn setup_quick_options(
 
     let divider = 40.0;
 
-    // Close button
+    enum RowKind {
+        Label(&'static str),
+        Buttons(&'static [(&'static str, &'static str)]),
+        Switch(&'static str, bool),
+    }
+    let page1 = vec![
+        RowKind::Label("Scale hack"),
+        RowKind::Buttons(&[
+            ("Default", "scaleHackDefault"),
+            ("Off", "scaleHack1"),
+            ("2×", "scaleHack2"),
+            ("3×", "scaleHack3"),
+            ("4×", "scaleHack4"),
+        ]),
+        RowKind::Label("Orientation"),
+        RowKind::Buttons(&[
+            ("Default", "orientationDefault"),
+            ("←", "orientationLandscapeLeft"),
+            ("→", "orientationLandscapeRight"),
+            ("↓", "orientationPortraitUpsideDown"),
+        ]),
+    ];
+    let mut page2 = vec![
+        RowKind::Label("Network access"),
+        RowKind::Switch("network:", false),
+        RowKind::Label("Use analog sticks for tilt controls"),
+        RowKind::Switch("analogStickTiltControls:", true),
+    ];
+    if crate::window::Window::rotatable_fullscreen() {
+        // Fullscreen option doesn't make sense on always-fullscreen platforms
+        page2.push(RowKind::Label("Fullscreen (override)"));
+        page2.push(RowKind::Switch("fullscreen:", false));
+    }
+    let page3 = vec![
+        RowKind::Label("Show FPS (in console)"),
+        RowKind::Switch("printFps:", false),
+        RowKind::Label("Force composition"),
+        RowKind::Switch("forceComposition:", false),
+        RowKind::Label("Ignore GL errors"),
+        RowKind::Switch("ignoreGlErrors:", false),
+        RowKind::Label("Error pop-ups"),
+        RowKind::Switch("errorPopups:", true),
+    ];
+    let pages = [page1, page2, page3];
+    let nav_height: CGFloat = 50.0;
+
+    let mut button_rows = Vec::new();
+    let mut page_views = Vec::new();
+    for page in pages.iter() {
+        // Container view for this page, so pages can be shown and hidden
+        // independently.
+        let page_view: id = msg_class![env; UIView alloc];
+        let page_view: id = msg![env; page_view initWithFrame:main_frame];
+        let bg_color: id = msg_class![env; UIColor clearColor];
+        () = msg![env; page_view setBackgroundColor:bg_color];
+        // Only the first page is visible initially.
+        let hidden = !page_views.is_empty();
+        () = msg![env; page_view setHidden:hidden];
+        () = msg![env; main_view addSubview:page_view];
+        page_views.push(page_view);
+
+        for (i, row) in page.iter().enumerate() {
+            let row_center = divider
+                + ((1 + i) as CGFloat)
+                    * ((main_frame.size.height - divider - nav_height)
+                        / ((page.len() + 1) as CGFloat));
+
+            match *row {
+                RowKind::Label(text) => {
+                    let frame = CGRect {
+                        origin: CGPoint {
+                            x: 0.0,
+                            y: row_center - 30.0 / 2.0,
+                        },
+                        size: CGSize {
+                            width: main_frame.size.width,
+                            height: 30.0,
+                        },
+                    };
+
+                    let label: id = msg_class![env; UILabel alloc];
+                    let label: id = msg![env; label initWithFrame:frame];
+                    let text = ns_string::get_static_str(env, text);
+                    () = msg![env; label setText:text];
+                    () = msg![env; label setTextAlignment:UITextAlignmentCenter];
+                    () = msg![env; page_view addSubview:label];
+                }
+                RowKind::Buttons(buttons) => {
+                    button_rows.push(make_button_row(
+                        env,
+                        delegate,
+                        page_view,
+                        main_frame.size,
+                        row_center,
+                        buttons,
+                        /* font_size: */ None,
+                    ));
+                }
+                RowKind::Switch(selector, default_state) => {
+                    let switch_frame = CGRect {
+                        origin: CGPoint {
+                            x: main_frame.size.width / 2.0 - 94.0 / 2.0,
+                            y: row_center - 27.0 / 2.0,
+                        },
+                        size: Default::default(),
+                    };
+
+                    let switch: id = msg_class![env; UISwitch alloc];
+                    let switch: id = msg![env; switch initWithFrame:switch_frame];
+                    () = msg![env; switch setOn:default_state];
+                    let selector = env.objc.lookup_selector(selector).unwrap();
+                    () = msg![env; switch addTarget:delegate
+                                             action:selector
+                                   forControlEvents:UIControlEventValueChanged];
+                    () = msg![env; page_view addSubview:switch];
+                }
+            }
+        }
+    }
+
+    // Close button (on top of the page views, so it stays tappable)
     {
         let button_frame = CGRect {
             origin: CGPoint {
@@ -1418,104 +1603,71 @@ fn setup_quick_options(
         () = msg![env; main_view addSubview:button];
     }
 
-    enum RowKind {
-        Label(&'static str),
-        Buttons(&'static [(&'static str, &'static str)]),
-        Switch(&'static str, bool),
-    }
-    let rows = [
-        RowKind::Label("Scale hack"),
-        RowKind::Buttons(&[
-            ("Default", "scaleHackDefault"),
-            ("Off", "scaleHack1"),
-            ("2×", "scaleHack2"),
-            ("3×", "scaleHack3"),
-            ("4×", "scaleHack4"),
-        ]),
-        RowKind::Label("Orientation"),
-        RowKind::Buttons(&[
-            ("Default", "orientationDefault"),
-            ("←", "orientationLandscapeLeft"),
-            ("→", "orientationLandscapeRight"),
-            ("↓", "orientationPortraitUpsideDown"),
-        ]),
-        RowKind::Label("Network access"),
-        RowKind::Switch("network:", false),
-        RowKind::Label("Use analog sticks for tilt controls"),
-        RowKind::Switch("analogStickTiltControls:", true),
-        // ---- (divider for stuff skipped below)
-        RowKind::Label("Fullscreen (override)"),
-        RowKind::Switch("fullscreen:", false),
-    ];
-    let rows_len_full = rows.len();
-    let rows = if crate::window::Window::rotatable_fullscreen() {
-        // Fullscreen option doesn't make sense on always-fullscreen platforms
-        &rows[..rows.len() - 2]
-    } else {
-        &rows[..]
+    // Page navigation bar
+    let page_label_frame = CGRect {
+        origin: CGPoint {
+            x: main_frame.size.width / 2.0 - 60.0,
+            y: main_frame.size.height - nav_height,
+        },
+        size: CGSize {
+            width: 120.0,
+            height: nav_height,
+        },
     };
+    let page_label: id = msg_class![env; UILabel alloc];
+    let page_label: id = msg![env; page_label initWithFrame:page_label_frame];
+    let text = ns_string::get_static_str(env, "1 / 3");
+    () = msg![env; page_label setText:text];
+    () = msg![env; page_label setTextAlignment:UITextAlignmentCenter];
+    () = msg![env; main_view addSubview:page_label];
 
-    let mut button_rows = Vec::new();
-    for (i, row) in rows.iter().enumerate() {
-        let row_center = divider
-            + ((1 + i) as CGFloat)
-                * ((main_frame.size.height - divider) / ((rows_len_full + 1) as CGFloat));
-
-        match *row {
-            RowKind::Label(text) => {
-                let frame = CGRect {
-                    origin: CGPoint {
-                        x: 0.0,
-                        y: row_center - 30.0 / 2.0,
-                    },
-                    size: CGSize {
-                        width: main_frame.size.width,
-                        height: 30.0,
-                    },
-                };
-
-                let label: id = msg_class![env; UILabel alloc];
-                let label: id = msg![env; label initWithFrame:frame];
-                let text = ns_string::get_static_str(env, text);
-                () = msg![env; label setText:text];
-                () = msg![env; label setTextAlignment:UITextAlignmentCenter];
-                () = msg![env; main_view addSubview:label];
-            }
-            RowKind::Buttons(buttons) => {
-                button_rows.push(make_button_row(
-                    env,
-                    delegate,
-                    main_view,
-                    main_frame.size,
-                    row_center,
-                    buttons,
-                    /* font_size: */ None,
-                ));
-            }
-            RowKind::Switch(selector, default_state) => {
-                let switch_frame = CGRect {
-                    origin: CGPoint {
-                        x: main_frame.size.width / 2.0 - 94.0 / 2.0,
-                        y: row_center - 27.0 / 2.0,
-                    },
-                    size: Default::default(),
-                };
-
-                let switch: id = msg_class![env; UISwitch alloc];
-                let switch: id = msg![env; switch initWithFrame:switch_frame];
-                () = msg![env; switch setOn:default_state];
-                let selector = env.objc.lookup_selector(selector).unwrap();
-                () = msg![env; switch addTarget:delegate
-                                         action:selector
-                               forControlEvents:UIControlEventValueChanged];
-                () = msg![env; main_view addSubview:switch];
-            }
-        }
+    for (title, x_offset) in [("‹", 10.0), ("›", main_frame.size.width - 50.0)] {
+        let button_frame = CGRect {
+            origin: CGPoint {
+                x: x_offset,
+                y: main_frame.size.height - nav_height,
+            },
+            size: CGSize {
+                width: 40.0,
+                height: nav_height,
+            },
+        };
+        let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeRoundedRect];
+        let text = ns_string::get_static_str(env, title);
+        () = msg![env; button setTitle:text forState:UIControlStateNormal];
+        () = msg![env; button setFrame:button_frame];
+        // FIXME: manually calling layoutSubviews shouldn't be needed?
+        () = msg![env; button layoutSubviews];
+        let label: id = msg![env; button titleLabel];
+        let font: id = msg_class![env; UIFont systemFontOfSize:(24.0 as CGFloat)];
+        () = msg![env; label setFont:font];
+        let selector = env.objc.lookup_selector(if x_offset < 20.0 {
+            "quickOptionsPrevPage"
+        } else {
+            "quickOptionsNextPage"
+        }).unwrap();
+        () = msg![env; button addTarget:delegate
+                                 action:selector
+                       forControlEvents:UIControlEventTouchUpInside];
+        () = msg![env; main_view addSubview:button];
     }
 
     QuickOptionsStuff {
         main_view,
+        page_views,
+        page_label,
         scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
         orientation_buttons: button_rows[1][..].try_into().unwrap(),
     }
+}
+
+fn update_quick_options_page(env: &mut Environment, stuff: &QuickOptionsStuff, page_idx: usize) {
+    for (i, page_view) in stuff.page_views.iter().enumerate() {
+        () = msg![env; (*page_view) setHidden:(i != page_idx)];
+    }
+    let text = ns_string::from_rust_string(
+        env,
+        format!("{} / {}", page_idx + 1, stuff.page_views.len()),
+    );
+    () = msg![env; (stuff.page_label) setText:text];
 }

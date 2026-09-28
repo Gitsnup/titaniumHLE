@@ -89,8 +89,8 @@ pub extern "C" fn SDL_main(
 
     // Empty args: brings up app picker.
     match main([String::new()].into_iter()) {
-        Ok(_) => echo!("touchHLE finished"),
-        Err(e) => echo!("touchHLE errored: {e:?}"),
+        Ok(_) => echo!("titaniumHLE finished"),
+        Err(e) => echo!("titaniumHLE errored: {e:?}"),
     }
     0
 }
@@ -116,7 +116,7 @@ Special options:
 
 pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     echo!(
-        "touchHLE {}{}{} — https://touchhle.org/",
+        "titaniumHLE {}{}{} — https://touchhle.org/",
         branding(),
         if branding().is_empty() { "" } else { " " },
         VERSION,
