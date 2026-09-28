@@ -6,13 +6,24 @@
 //! `UISwitch`.
 
 use crate::environment::Environment;
+use crate::frameworks::core_graphics::cg_bitmap_context::{
+    CGBitmapContextCreate, CGBitmapContextCreateImage,
+};
+use crate::frameworks::core_graphics::cg_color_space::CGColorSpaceCreateDeviceRGB;
+use crate::frameworks::core_graphics::cg_context::{
+    CGContextFillRect, CGContextRelease, CGContextScaleCTM, CGContextSetRGBFillColor,
+    CGContextTranslateCTM,
+};
+use crate::frameworks::core_graphics::cg_image::kCGImageAlphaPremultipliedLast;
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string;
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::frameworks::uikit::ui_font::UITextAlignmentCenter;
+use crate::frameworks::uikit::ui_graphics::{UIGraphicsPopContext, UIGraphicsPushContext};
 use crate::frameworks::uikit::ui_view::ui_control::{
     send_actions, UIControlEventTouchUpInside, UIControlEventValueChanged,
 };
+use crate::mem::Ptr;
 use crate::objc::{
     id, impl_HostObject_with_superclass, msg, msg_class, msg_super, nil, objc_classes, release,
     ClassExports, NSZonePtr,
@@ -58,6 +69,161 @@ impl Default for UISwitchHostObject {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum SwitchImageKind {
+    /// Track with the glossy aqua ON half on the left
+    TrackOn,
+    /// Track with both halves frosted silver
+    TrackOff,
+    /// Glossy white thumb orb
+    Thumb,
+}
+
+/// Frutiger Aero-style glossy artwork for the switch, drawn per pixel row
+/// (the CGContext implementation has no gradient primitives).
+fn make_switch_image(env: &mut Environment, kind: SwitchImageKind) -> id {
+    let (width, height): (u32, f32) = match kind {
+        SwitchImageKind::TrackOn | SwitchImageKind::TrackOff => (92, 25.0),
+        SwitchImageKind::Thumb => (40, 23.0),
+    };
+    let (width_f, height_f) = (width as f32, height);
+
+    let color_space = CGColorSpaceCreateDeviceRGB(env);
+    let context = CGBitmapContextCreate(
+        env,
+        Ptr::null(),
+        width,
+        height as u32,
+        8,
+        4 * width,
+        color_space,
+        kCGImageAlphaPremultipliedLast,
+    );
+    UIGraphicsPushContext(env, context);
+
+    // Compensate for row order inversion (y=0 becomes the top row)
+    CGContextTranslateCTM(env, context, 0.0, height_f);
+    CGContextScaleCTM(env, context, 1.0, -1.0);
+
+    // Vertical gradient fill helper
+    fn fill_gradient(
+        env: &mut Environment,
+        context: id,
+        rect: CGRect,
+        top: (f32, f32, f32),
+        bottom: (f32, f32, f32),
+    ) {
+        let rows = rect.size.height as u32;
+        for row in 0..rows {
+            let t = row as f32 / (rows - 1) as f32;
+            CGContextSetRGBFillColor(
+                env,
+                context,
+                (top.0 + (bottom.0 - top.0) * t) as CGFloat,
+                (top.1 + (bottom.1 - top.1) * t) as CGFloat,
+                (top.2 + (bottom.2 - top.2) * t) as CGFloat,
+                1.0,
+            );
+            CGContextFillRect(
+                env,
+                context,
+                CGRect {
+                    origin: CGPoint {
+                        x: rect.origin.x,
+                        y: rect.origin.y + row as CGFloat,
+                    },
+                    size: CGSize {
+                        width: rect.size.width,
+                        height: 1.0,
+                    },
+                },
+            );
+        }
+    }
+    // Top-half glass sheen helper
+    fn fill_sheen(env: &mut Environment, context: id, rect: CGRect, strength: f32) {
+        let rows = (rect.size.height / 2.0) as u32;
+        for row in 0..rows {
+            let t = row as f32 / rows as f32;
+            let alpha = strength * (1.0 - t) + 0.03;
+            CGContextSetRGBFillColor(env, context, 1.0, 1.0, 1.0, alpha as CGFloat);
+            CGContextFillRect(
+                env,
+                context,
+                CGRect {
+                    origin: CGPoint {
+                        x: rect.origin.x,
+                        y: rect.origin.y + row as CGFloat,
+                    },
+                    size: CGSize {
+                        width: rect.size.width,
+                        height: 1.0,
+                    },
+                },
+            );
+        }
+    }
+
+    let full = CGRect {
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: CGSize {
+            width: width_f,
+            height: height_f,
+        },
+    };
+    match kind {
+        // Aqua half on the left (where the "ON" label sits), silver on the right
+        SwitchImageKind::TrackOn => {
+            let half = CGSize {
+                width: width_f / 2.0,
+                height: height_f,
+            };
+            fill_gradient(
+                env,
+                context,
+                CGRect {
+                    origin: CGPoint { x: 0.0, y: 0.0 },
+                    size: half,
+                },
+                (0.70, 0.95, 1.0),
+                (0.03, 0.45, 0.85),
+            );
+            fill_gradient(
+                env,
+                context,
+                CGRect {
+                    origin: CGPoint {
+                        x: width_f / 2.0,
+                        y: 0.0,
+                    },
+                    size: half,
+                },
+                (0.92, 0.94, 0.97),
+                (0.55, 0.60, 0.68),
+            );
+            fill_sheen(env, context, full, 0.5);
+        }
+        SwitchImageKind::TrackOff => {
+            fill_gradient(env, context, full, (0.92, 0.94, 0.97), (0.55, 0.60, 0.68));
+            fill_sheen(env, context, full, 0.5);
+        }
+        SwitchImageKind::Thumb => {
+            fill_gradient(env, context, full, (1.0, 1.0, 1.0), (0.78, 0.81, 0.86));
+            fill_sheen(env, context, full, 0.75);
+        }
+    }
+
+    UIGraphicsPopContext(env);
+
+    let cg_image = CGBitmapContextCreateImage(env, context);
+    CGContextRelease(env, context);
+
+    let ui_image: id = msg_class![env; UIImage imageWithCGImage:cg_image];
+    release(env, cg_image);
+
+    ui_image
+}
+
 fn update(env: &mut Environment, this: id) {
     let &mut UISwitchHostObject {
         is_on,
@@ -74,12 +240,16 @@ fn update(env: &mut Environment, this: id) {
         () = msg![env; this setAlpha:0.8f32];
     };
 
-    let back_color: id = if is_on {
-        msg![env; label_on backgroundColor]
-    } else {
-        msg![env; label_off backgroundColor]
-    };
-    () = msg![env; back setBackgroundColor:back_color];
+    let track_image = make_switch_image(
+        env,
+        if is_on {
+            SwitchImageKind::TrackOn
+        } else {
+            SwitchImageKind::TrackOff
+        },
+    );
+    () = msg![env; back setImage:track_image];
+    release(env, track_image);
 
     () = msg![env; label_on setHidden:(!is_on)];
     () = msg![env; label_off setHidden:is_on];
@@ -94,26 +264,23 @@ fn init_common(env: &mut Environment, this: id) -> id {
 
     let white_color: id = msg_class![env; UIColor whiteColor];
     let light_gray_color: id = msg_class![env; UIColor lightGrayColor];
-    let blue_color: id = msg_class![env; UIColor colorWithRed:(83.0f32/255.0)
-                                                        green:(141.0f32/255.0)
-                                                         blue:(235.0f32/255.0)
-                                                        alpha:1.0f32];
-    let thumb_color: id = msg_class![env; UIColor colorWithRed:(205.0f32/255.0)
-                                                         green:(205.0f32/255.0)
-                                                          blue:(205.0f32/255.0)
-                                                         alpha:1.0f32];
 
     // This is actually sets the "border" color
     () = msg![env; this setBackgroundColor:light_gray_color];
 
-    let back: id = msg_class![env; UIView new];
-    () = msg![env; back setBackgroundColor:white_color];
+    let back: id = msg_class![env; UIImageView new];
+    let track_image = make_switch_image(env, SwitchImageKind::TrackOff);
+    () = msg![env; back setImage:track_image];
+    release(env, track_image);
 
-    let thumb: id = msg_class![env; UIView new];
-    () = msg![env; thumb setBackgroundColor:thumb_color];
+    let thumb: id = msg_class![env; UIImageView new];
+    let thumb_image = make_switch_image(env, SwitchImageKind::Thumb);
+    () = msg![env; thumb setImage:thumb_image];
+    release(env, thumb_image);
 
     let label_on: id = msg_class![env; UILabel new];
-    () = msg![env; label_on setBackgroundColor:blue_color];
+    let clear_color: id = msg_class![env; UIColor clearColor];
+    () = msg![env; label_on setBackgroundColor:clear_color];
     () = msg![env; label_on setTextAlignment:UITextAlignmentCenter];
     let text = ns_string::get_static_str(env, "ON");
     () = msg![env; label_on setText:text];
@@ -121,7 +288,7 @@ fn init_common(env: &mut Environment, this: id) -> id {
     () = msg![env; label_on setFont:font];
 
     let label_off: id = msg_class![env; UILabel new];
-    () = msg![env; label_off setBackgroundColor:white_color];
+    () = msg![env; label_off setBackgroundColor:clear_color];
     () = msg![env; label_off setTextAlignment:UITextAlignmentCenter];
     let text = ns_string::get_static_str(env, "OFF");
     () = msg![env; label_off setText:text];
