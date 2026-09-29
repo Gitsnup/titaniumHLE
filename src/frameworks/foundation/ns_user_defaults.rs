@@ -16,23 +16,6 @@ use crate::objc::{
 };
 use crate::Environment;
 
-/// Write a string into the guest's standard defaults domain, the same way the
-/// system Settings app would when the user flips one of an app's preference
-/// toggles. This is used by the app picker's Quick options panel, which stands
-/// in for the Settings app that iOS apps assume exists.
-///
-/// The value only reaches disk when the guest calls `synchronize`/quits, so
-/// callers that want it to persist immediately should also trigger the
-/// application-exit path.
-pub fn set_app_default_string(env: &mut Environment, key: &str, value: &str) {
-    let defaults: id = msg_class![env; NSUserDefaults standardUserDefaults];
-    let key = ns_string::from_rust_string(env, key.to_owned());
-    let value = ns_string::from_rust_string(env, value.to_owned());
-    () = msg![env; defaults setObject:value forKey:key];
-    release(env, key);
-    release(env, value);
-}
-
 #[derive(Default)]
 pub struct State {
     /// `NSUserDefaults*`
