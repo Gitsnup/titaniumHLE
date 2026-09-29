@@ -178,6 +178,18 @@ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
     }
 }
 
+/// Get a URL that tells the Android app to open its in-app "add game" flow
+/// (see AddGameActivity.java), so the user can pick a .ipa file with the
+/// system document picker and have it imported into touchHLE's apps
+/// directory. This is only meaningful on Android.
+pub fn url_for_adding_game() -> Result<String, String> {
+    if std::env::consts::OS == "android" {
+        Ok("titaniumhle://add-game".to_string())
+    } else {
+        Err("The in-app game importer is only available on Android.".to_string())
+    }
+}
+
 /// Only meaningful on certain OSes: create the user data directory if it
 /// doesn't exist, and populate it with templates or README files. (On other
 /// platforms these are simply bundled with touchHLE in a ZIP file.)

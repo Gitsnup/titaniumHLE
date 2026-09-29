@@ -101,6 +101,7 @@ Compatibility:
 Usability:
 
 - Default options for various games have been added or improved. (@celerizer, @nighto)
+- On Android, the “File manager” button in the app picker has been replaced by an “Add game” button, which opens the system file picker and imports the chosen “.ipa” file straight into touchHLE's apps directory. (@Gitsnup)
 - The app picker now has a “Quick options” feature. This provides a quicker and easier way to set some common options. (@hikari-no-yume)
 - App icons in the app picker are now sorted by the display name of the app, case-insensitively. (@hikari-no-yume)
 - The accelerometer (tilt controls) can now be simulated using a mouse, instead of a game controller or real accelerometer. Simply hold down the right mouse button and move the mouse cursor. (@alborrajo)

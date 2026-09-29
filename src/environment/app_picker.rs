@@ -309,23 +309,34 @@ const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_next_page = true;
 }
 
-- (())openFileManager {
+- (())addGame {
     // Assert (see above).
     let _ = env.objc.borrow_mut::<AppPickerDelegateHostObject>(this);
 
-    match paths::url_for_opening_user_data_dir() {
+    // On Android, opening the user data directory in a file manager is no
+    // longer a reliable way to add games, so we use the in-app document
+    // picker flow instead. Elsewhere, opening the directory in the system
+    // file manager is still the most convenient option.
+    let url = if std::env::consts::OS == "android" {
+        paths::url_for_adding_game()
+    } else {
+        paths::url_for_opening_user_data_dir()
+    };
+    match url {
         Ok(url) => {
             // Our `openURL:` implementation is bypassed because it doesn't
             // allow non-web URLs.
             let url_res = crate::window::open_url(env, &url);
             if let Err(e) = url_res {
-                echo!("Couldn't open file manager at {:?}: {}", url, e);
+                echo!("Couldn't open URL {:?}: {}", url, e);
+            } else if std::env::consts::OS == "android" {
+                echo!("Opened game importer at {:?}.", url);
             } else {
                 echo!("Opened file manager at {:?}, exiting.", url);
                 std::process::exit(0);
             }
         },
-        Err(e) => echo!("Couldn't open file manager: {}", e),
+        Err(e) => echo!("Couldn't add game: {}", e),
     }
 }
 
@@ -577,7 +588,7 @@ fn app_picker_inner(
         app_frame.size,
         buttons_row_center,
         &[
-            ("File manager", "openFileManager"),
+            ("Add game", "addGame"),
             ("Quick options", "quickOptionsShow"),
         ],
         None,
