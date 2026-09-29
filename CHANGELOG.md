@@ -32,6 +32,8 @@ Compatibility:
   - [Asphalt 6](https://appdb.touchhle.org/apps/1217) (@ciciplusplus)
   - [World of Goo](https://appdb.touchhle.org/apps/1210) (@ciciplusplus)
 - API support improvements:
+  - `UIView` now honors `autoresizingMask`/`autoresizesSubviews`, fixing layouts in nib-based apps such as reMovem. (@Gitsnup)
+  - Added a debug view-tree dump, enabled with the `TOUCHHLE_DUMP_VIEWS=1` environment variable. (@Gitsnup)
   - Various small contributions. (@hikari-no-yume, @ciciplusplus, @zazatree, @abnormalmaps, @alborrajo, @acieslewicz, @JCR64, @mcd-3, @apexad)
   - Fixed several issues related to apps that rely on UIKit to rotate their UI. (@hikari-no-yume)
   - Support for iPad device family. Device family is deduced from the app bundle, but user can also override it with `--device-family=` option. (@ciciplusplus)

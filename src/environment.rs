@@ -1430,6 +1430,7 @@ impl Environment {
                 if let Some(ref mut window) = self.window {
                     window.poll_for_events(&self.options);
                 }
+                frameworks::uikit::ui_view::debug_dump_view_tree_if_requested(&mut self);
                 let curr_thread_block = self.threads[self.current_thread].blocked_by.clone();
                 if matches!(
                     self.threads[self.current_thread].state,

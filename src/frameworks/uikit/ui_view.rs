@@ -90,6 +90,8 @@ pub(super) struct UIViewHostObject {
     clears_context_before_drawing: bool,
     user_interaction_enabled: bool,
     multiple_touch_enabled: bool,
+    autoresizing_mask: NSUInteger,
+    autoresizes_subviews: bool,
 }
 impl HostObject for UIViewHostObject {}
 impl Default for UIViewHostObject {
@@ -105,6 +107,8 @@ impl Default for UIViewHostObject {
             clears_context_before_drawing: true,
             user_interaction_enabled: true,
             multiple_touch_enabled: false,
+            autoresizing_mask: 0,
+            autoresizes_subviews: true,
         }
     }
 }
@@ -146,6 +150,58 @@ fn init_common(env: &mut Environment, this: id) -> id {
     env.framework_state.uikit.ui_view.views.push(this);
 
     this
+}
+
+/// Debug helper: dump the whole view tree (class, id, frame, flags) to the
+/// host log. Enabled by setting TOUCHHLE_DUMP_VIEWS=1; the dump happens on the
+/// first main-loop tick, i.e. after the app finishes launching.
+pub(crate) fn debug_dump_view_tree_if_requested(env: &mut Environment) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if !DONE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if std::env::var("TOUCHHLE_DUMP_VIEWS").as_deref() != Ok("1") {
+        return;
+    }
+    let windows = env
+        .framework_state
+        .uikit
+        .ui_view
+        .ui_window
+        .windows
+        .clone();
+    for &window in &windows {
+        echo!("===== VIEW TREE (window {:?}) =====", window);
+        debug_dump_view_tree_inner(env, window, 0);
+        echo!("===== END VIEW TREE =====");
+    }
+}
+
+fn debug_dump_view_tree_inner(env: &mut Environment, view: id, depth: usize) {
+    let indent = "  ".repeat(depth);
+    let class: Class = msg![env; view class];
+    let class_name = env.objc.get_class_name(class).to_owned();
+    let frame: CGRect = msg![env; view frame];
+    let hidden: bool = msg![env; view isHidden];
+    let user_interaction: bool = msg![env; view isUserInteractionEnabled];
+    let alpha: CGFloat = msg![env; view alpha];
+    echo!(
+        "{}{:?} {} frame={:?} hidden={} interaction={} alpha={}",
+        indent,
+        view,
+        class_name,
+        frame,
+        hidden,
+        user_interaction,
+        alpha,
+    );
+    let subviews: id = msg![env; view subviews];
+    let count: NSUInteger = msg![env; subviews count];
+    for i in 0..count {
+        let subview: id = msg![env; subviews objectAtIndex:i];
+        debug_dump_view_tree_inner(env, subview, depth + 1);
+    }
 }
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -657,6 +713,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         clears_context_before_drawing: _,
         user_interaction_enabled: _,
         multiple_touch_enabled: _,
+        autoresizing_mask: _,
+        autoresizes_subviews: _,
     } = std::mem::take(env.objc.borrow_mut(this));
 
     release(env, layer);
@@ -924,11 +982,18 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this_layer convertRect:rect toLayer:other_layer]
 }
 
+- (NSUInteger)autoresizingMask {
+    env.objc.borrow::<UIViewHostObject>(this).autoresizing_mask
+}
 - (())setAutoresizingMask:(NSUInteger)mask {
-    todo_objc_setter!(this, mask);
+    log_dbg!("UIView {:?} setAutoresizingMask: {:?}", this, mask);
+    env.objc.borrow_mut::<UIViewHostObject>(this).autoresizing_mask = mask;
+}
+- (bool)autoresizesSubviews {
+    env.objc.borrow::<UIViewHostObject>(this).autoresizes_subviews
 }
 - (())setAutoresizesSubviews:(bool)enabled {
-    todo_objc_setter!(this, enabled);
+    env.objc.borrow_mut::<UIViewHostObject>(this).autoresizes_subviews = enabled;
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
