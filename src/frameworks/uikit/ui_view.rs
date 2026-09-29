@@ -69,6 +69,77 @@ const UIViewAnimationCurveEaseIn: UIViewAnimationCurve = 1;
 const UIViewAnimationCurveEaseOut: UIViewAnimationCurve = 2;
 const UIViewAnimationCurveLinear: UIViewAnimationCurve = 3;
 
+// UIViewAutoresizing constants (UIView.h)
+const UIViewAutoresizingFlexibleLeftMargin: NSUInteger = 1 << 0;
+const UIViewAutoresizingFlexibleWidth: NSUInteger = 1 << 1;
+const UIViewAutoresizingFlexibleRightMargin: NSUInteger = 1 << 2;
+const UIViewAutoresizingFlexibleTopMargin: NSUInteger = 1 << 3;
+const UIViewAutoresizingFlexibleHeight: NSUInteger = 1 << 4;
+const UIViewAutoresizingFlexibleBottomMargin: NSUInteger = 1 << 5;
+
+/// After a view's size changed from `old_size` to `new_size`, update the
+/// frames of its subviews according to each subview's `autoresizingMask`
+/// (if this view has `autoresizesSubviews` enabled, which is the default).
+/// Each flexible dimension (width/height) and each flexible margin absorbs an
+/// equal share of the size change along its axis, matching UIKit.
+fn apply_autoresizing_masks(env: &mut Environment, this: id, old_size: CGSize, new_size: CGSize) {
+    if old_size == new_size {
+        return;
+    }
+    if !env
+        .objc
+        .borrow::<UIViewHostObject>(this)
+        .autoresizes_subviews
+    {
+        return;
+    }
+    let subviews = env.objc.borrow::<UIViewHostObject>(this).subviews.clone();
+    if subviews.is_empty() {
+        return;
+    }
+    let delta_w = new_size.width - old_size.width;
+    let delta_h = new_size.height - old_size.height;
+    for &subview in &subviews {
+        let mask = env
+            .objc
+            .borrow::<UIViewHostObject>(subview)
+            .autoresizing_mask;
+        if mask == 0 {
+            continue;
+        }
+        let frame: CGRect = msg![env; subview frame];
+        let mut x = frame.origin.x;
+        let mut y = frame.origin.y;
+        let mut width = frame.size.width;
+        let mut height = frame.size.height;
+
+        let flexible_left = (mask & UIViewAutoresizingFlexibleLeftMargin) != 0;
+        let flexible_width = (mask & UIViewAutoresizingFlexibleWidth) != 0;
+        let flexible_right = (mask & UIViewAutoresizingFlexibleRightMargin) != 0;
+        let parts_w =
+            (flexible_left as u8 + flexible_width as u8 + flexible_right as u8) as CGFloat;
+        if parts_w > 0.0 {
+            x += delta_w * (flexible_left as u8 as CGFloat) / parts_w;
+            width += delta_w * (flexible_width as u8 as CGFloat) / parts_w;
+        }
+
+        let flexible_top = (mask & UIViewAutoresizingFlexibleTopMargin) != 0;
+        let flexible_height = (mask & UIViewAutoresizingFlexibleHeight) != 0;
+        let flexible_bottom = (mask & UIViewAutoresizingFlexibleBottomMargin) != 0;
+        let parts_h =
+            (flexible_top as u8 + flexible_height as u8 + flexible_bottom as u8) as CGFloat;
+        if parts_h > 0.0 {
+            y += delta_h * (flexible_top as u8 as CGFloat) / parts_h;
+            height += delta_h * (flexible_height as u8 as CGFloat) / parts_h;
+        }
+
+        () = msg![env; subview setFrame:(CGRect {
+            origin: CGPoint { x, y },
+            size: CGSize { width, height },
+        })];
+    }
+}
+
 #[derive(Default)]
 pub struct State {
     /// List of views for internal purposes. Non-retaining!
@@ -158,10 +229,13 @@ fn init_common(env: &mut Environment, this: id) -> id {
 pub(crate) fn debug_dump_view_tree_if_requested(env: &mut Environment) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static DONE: AtomicBool = AtomicBool::new(false);
-    if !DONE.swap(true, Ordering::SeqCst) {
+    if std::env::var("TOUCHHLE_DUMP_VIEWS").as_deref() != Ok("1") {
         return;
     }
-    if std::env::var("TOUCHHLE_DUMP_VIEWS").as_deref() != Ok("1") {
+    // Only dump once, on the first main-loop tick, i.e. after the app has
+    // finished launching. `swap` returns the previous value, so this only
+    // returns early on the second and subsequent calls.
+    if DONE.swap(true, Ordering::SeqCst) {
         return;
     }
     let windows = env.framework_state.uikit.ui_view.ui_window.windows.clone();
@@ -445,6 +519,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg![env; this setBackgroundColor:bg_color];
     () = msg![env; this setTag:tag];
     () = msg![env; this setMultipleTouchEnabled:multi_touch_enabled];
+
+    // NIB files set a view's autoresizingMask through the coder, not through
+    // the setter, so it has to be decoded here or it would be lost.
+    let mask_key = get_static_str(env, "UIViewAutoresizingMask");
+    let mask_object: id = msg![env; coder decodeObjectForKey:mask_key];
+    if mask_object != nil {
+        let mask: NSInteger = msg![env; mask_object integerValue];
+        env.objc.borrow_mut::<UIViewHostObject>(this).autoresizing_mask =
+            mask as NSUInteger;
+    }
 
     for i in 0..subview_count {
         let subview: id = msg![env; subviews objectAtIndex:i];
@@ -808,7 +892,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (())setBounds:(CGRect)bounds {
     let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    msg![env; layer setBounds:bounds]
+    let old_bounds: CGRect = msg![env; layer bounds];
+    () = msg![env; layer setBounds:bounds];
+    apply_autoresizing_masks(env, this, old_bounds.size, bounds.size);
 }
 - (CGPoint)center {
     // FIXME: what happens if [layer anchorPoint] isn't (0.5, 0.5)?
@@ -825,7 +911,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (())setFrame:(CGRect)frame {
     let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
-    msg![env; layer setFrame:frame]
+    let old_frame: CGRect = msg![env; layer frame];
+    () = msg![env; layer setFrame:frame];
+    apply_autoresizing_masks(env, this, old_frame.size, frame.size);
 }
 - (CGAffineTransform)transform {
     let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
