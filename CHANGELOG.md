@@ -32,6 +32,7 @@ Compatibility:
   - [Asphalt 6](https://appdb.touchhle.org/apps/1217) (@ciciplusplus)
   - [World of Goo](https://appdb.touchhle.org/apps/1210) (@ciciplusplus)
 - API support improvements:
+  - UIView `autoresizingMask`/`autoresizesSubviews` are now respected during layout, fixing nib-based UIs whose controls ended up off-screen (e.g. reMovem). (@Gitsnup)
   - `UIView` now honors `autoresizingMask`/`autoresizesSubviews`, fixing layouts in nib-based apps such as reMovem. (@Gitsnup)
   - Added a debug view-tree dump, enabled with the `TOUCHHLE_DUMP_VIEWS=1` environment variable. (@Gitsnup)
   - Various small contributions. (@hikari-no-yume, @ciciplusplus, @zazatree, @abnormalmaps, @alborrajo, @acieslewicz, @JCR64, @mcd-3, @apexad)
