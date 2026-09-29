@@ -15,11 +15,8 @@
 //! preference key it asked for.
 
 use crate::fs::BundleData;
-use crate::objc::{id, msg_class};
-use crate::Environment;
 use plist::Value;
 use std::io::Cursor;
-
 /// A user-visible toggle declared by the app's `Settings.bundle`.
 #[derive(Clone)]
 pub struct SettingsToggle {
@@ -36,25 +33,79 @@ pub struct SettingsToggle {
 }
 
 impl SettingsToggle {
-    /// Read the current value from the guest's defaults, falling back to the
-    /// bundle's default.
-    pub fn current_value(&self, env: &mut Environment) -> bool {
-        let user_defaults: id = msg_class![env; NSUserDefaults standardUserDefaults];
-        let key: id = crate::frameworks::foundation::ns_string::from_rust_string(
-            env,
-            self.key.clone(),
-        );
-        let value: id = crate::objc::msg![env; user_defaults stringForKey:key];
-        crate::objc::release(env, key);
-        if value == crate::objc::nil {
-            return self.default_value;
+    /// Read the current value from the app's own preferences in its sandbox,
+    /// falling back to the bundle's default.
+    pub fn current_value(&self, app_path: Option<&std::path::Path>) -> bool {
+        let value = app_path.and_then(|app_path| read_app_pref(app_path, &self.key));
+        match value {
+            // Anything that isn't the declared "off" value counts as "on",
+            // which matches how these plists are normally written (YES/true/1
+            // vs NO).
+            Some(value) => !value.eq_ignore_ascii_case(&self.false_value),
+            None => self.default_value,
         }
-        let value = crate::frameworks::foundation::ns_string::to_rust_string(env, value);
-        // Anything that isn't the declared "off" value counts as "on", which
-        // matches how these plists are normally written (YES/true/1 vs NO).
-        !value.eq_ignore_ascii_case(&self.false_value)
+    }
+}
+
+/// The app's preferences plist in its sandbox, at the same host path the
+/// guest's `NSUserDefaults` reads and writes it at.
+fn app_prefs_plist_path(app_path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let (bundle, _fs) = BundleData::open_any(app_path)
+        .and_then(|data| {
+            crate::bundle::Bundle::new_bundle_and_fs_from_host_path(
+                data, /* read_only_mode: */ true,
+            )
+        })
+        .map_err(|e| format!("Couldn't open the app bundle: {e}"))?;
+    let bundle_id = bundle.bundle_identifier().to_string();
+
+    let prefs_dir = crate::paths::user_data_base_path()
+        .join(crate::paths::SANDBOX_DIR)
+        .join(&bundle_id)
+        .join("Library")
+        .join("Preferences");
+    Ok(prefs_dir.join(format!("{bundle_id}.plist")))
+}
+
+/// Read a single string preference for the app, host-side, from its sandbox.
+/// Returns `None` if the app has never saved a value for it.
+pub fn read_app_pref(app_path: &std::path::Path, key: &str) -> Option<String> {
+    let value = Value::from_file(app_prefs_plist_path(app_path).ok()?).ok()?;
+    let dict = value.into_dictionary()?;
+    dict.get(key)?.as_string().map(str::to_owned)
+}
+
+/// Write a single string preference for the app, host-side, into its sandbox —
+/// the same way the system Settings app would. Other keys are preserved; the
+/// app reads the value back through `NSUserDefaults` on its next launch.
+///
+/// This has to happen host-side because the app picker's environment has a
+/// fake bundle and a fake filesystem: the guest's `NSUserDefaults` can't be
+/// used there.
+pub fn write_app_pref(app_path: &std::path::Path, key: &str, value: &str) -> Result<(), String> {
+    let plist_path = app_prefs_plist_path(app_path)?;
+    if let Some(parent) = plist_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Couldn't create the app's preferences directory {}: {e}",
+                parent.display()
+            )
+        })?;
     }
 
+    // Preserve any other keys the app (or a previous toggle) has saved.
+    let mut dict = match Value::from_file(&plist_path) {
+        Ok(value) => value
+            .into_dictionary()
+            .unwrap_or_else(plist::Dictionary::new),
+        Err(_) => plist::Dictionary::new(),
+    };
+    dict.insert(key.to_owned(), Value::String(value.to_owned()));
+
+    Value::Dictionary(dict)
+        .to_file_binary(&plist_path)
+        .map_err(|e| format!("Couldn't write the app's preferences: {e}"))?;
+    Ok(())
 }
 
 /// Parse the app's `Settings.bundle/Root.plist`, returning the toggles it
