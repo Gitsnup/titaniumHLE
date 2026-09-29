@@ -329,10 +329,14 @@ const CLASSES: ClassExports = objc_classes! {
             let url_res = crate::window::open_url(env, &url);
             if let Err(e) = url_res {
                 echo!("Couldn't open URL {:?}: {}", url, e);
-            } else if std::env::consts::OS == "android" {
-                echo!("Opened game importer at {:?}.", url);
             } else {
-                echo!("Opened file manager at {:?}, exiting.", url);
+                // Exiting is deliberate, on all platforms: the app picker
+                // only scans for games at startup, so the importer runs
+                // without touchHLE running at all. On Android this also
+                // keeps the emulator from running while its GL surface is
+                // torn down for the system file picker, which it doesn't
+                // handle gracefully.
+                echo!("Opened {:?}, exiting.", url);
                 std::process::exit(0);
             }
         },

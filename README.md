@@ -64,7 +64,7 @@ On Android, only the graphical user interface (app picker) is available. Therefo
 
 File management can be tricky on Android due to [restrictions introduced by Google in newer Android versions](https://developer.android.com/about/versions/11/privacy/storage#scoped-storage). One of these methods may work:
 
-* Tap the “Add game” button in touchHLE. This opens your device's document picker; choose a “.ipa” file and it will be copied into touchHLE's apps directory automatically. You'll need to restart touchHLE for the new game to show up in the app picker. If you have multiple “.ipa” files to add, simply repeat this for each one.
+* Tap the “Add game” button in touchHLE. This opens your device's document picker; choose a “.ipa” file and it will be copied into touchHLE's apps directory automatically. touchHLE closes itself while the picker is open, so just open it again afterwards to see the new game in the app picker. If you have multiple “.ipa” files to add, simply repeat this for each one.
 * If you have an older version of Android, you may be able to directly access touchHLE's files by browsing to `/sdcard/Android/data/org.touchhle.android/files/touchHLE_apps`. Note that the `/sdcard` directory is usually not on the SD card.
 * You may be able to use ADB. If you're unfamiliar with ADB, try using <https://yume-chan.github.io/ya-webadb/> (in Google Chrome or another browser with WebUSB) with your device connected over USB. touchHLE's files can be found in “sdcard” > “Android” > “data” > “org.touchhle.android” > “files” > “touchHLE\_apps”.
 

@@ -30,6 +30,7 @@ import java.io.OutputStream;
  */
 public class AddGameActivity extends Activity {
     private static final int REQUEST_OPEN_GAME = 1;
+    private static final String EXTRA_RELAUNCHED = "org.titaniumhle.add_game.RELAUNCHED";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,6 +38,19 @@ public class AddGameActivity extends Activity {
 
         Uri intent_url = getIntent().getData();
         if (intent_url == null || !"add-game".equals(intent_url.getHost())) {
+            finish();
+            return;
+        }
+
+        // SDL starts this activity with FLAG_ACTIVITY_NO_HISTORY, which makes
+        // the system finish it as soon as the document picker opens on top.
+        // Then onActivityResult() never runs and the picked file is lost.
+        // Relaunch ourselves without that flag so the importer stays alive.
+        if (!getIntent().getBooleanExtra(EXTRA_RELAUNCHED, false)) {
+            Intent relaunch = new Intent(this, AddGameActivity.class);
+            relaunch.setData(intent_url);
+            relaunch.putExtra(EXTRA_RELAUNCHED, true);
+            startActivity(relaunch);
             finish();
             return;
         }
@@ -53,7 +67,7 @@ public class AddGameActivity extends Activity {
 
         try {
             startActivityForResult(picker, REQUEST_OPEN_GAME);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             toast("Couldn't open a file picker: " + e.getMessage());
             finish();
         }
@@ -82,10 +96,11 @@ public class AddGameActivity extends Activity {
             apps_dir.mkdirs();
             File dest = new File(apps_dir, file_name);
             copy_stream(getContentResolver().openInputStream(game_url), dest);
-            // The app picker only scans for games at startup, so a restart is
-            // needed for the new game to show up.
-            toast("Imported " + file_name + ". Restart touchHLE to see it.");
-        } catch (IOException | SecurityException e) {
+            // touchHLE closes itself before the picker opens (the app picker
+            // only scans for games at startup), so the user just opens it
+            // again to see the new game.
+            toast("Imported " + file_name + ". Open touchHLE to play it.");
+        } catch (Throwable e) {
             toast("Couldn't import the file: " + e.getMessage());
         }
 
