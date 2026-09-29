@@ -155,8 +155,27 @@ struct AppPickerDelegateHostObject {
     error_popups: Option<bool>,
     quick_options_prev_page: bool,
     quick_options_next_page: bool,
+    /// Index into the selected app's settings toggles, or `usize::MAX` if none.
+    /// The switch that was flipped, if any.
+    setting_toggled: id,
+    setting_toggled_value: bool,
 }
 impl HostObject for AppPickerDelegateHostObject {}
+
+/// The toggles declared by the selected app's `Settings.bundle`, plus the
+/// switches that display them. Empty for apps without a settings bundle.
+#[derive(Default)]
+struct AppSettingsStuff {
+    toggles: Vec<crate::environment::settings_bundle::SettingsToggle>,
+    switches: Vec<id>,
+}
+
+impl AppSettingsStuff {
+    /// Which toggle a switch belongs to, identified by object identity.
+    fn index_of_switch(&self, switch: id) -> Option<usize> {
+        self.switches.iter().position(|&s| s == switch)
+    }
+}
 
 pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     // Not a real iOS dylib obviously. This shouldn't really be in the list of
@@ -259,6 +278,12 @@ const CLASSES: ClassExports = objc_classes! {
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).error_popups = Some(switch_state);
 }
+- (())settingToggled:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    let host_obj = env.objc.borrow_mut::<AppPickerDelegateHostObject>(this);
+    host_obj.setting_toggled = switch;
+    host_obj.setting_toggled_value = switch_state;
+}
 - (())quickOptionsPrevPage {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_prev_page = true;
 }
@@ -334,6 +359,9 @@ fn app_picker_inner(
     mut apps: Result<Vec<AppInfo>, String>,
 ) -> (PathBuf, Vec<String>) {
     let mut option_args = Vec::new();
+    // Path of the app whose icon was tapped, if any. This is only used to show
+    // that app's `Settings.bundle` toggles in the Quick options panel.
+    let mut selected_app_path: Option<PathBuf> = None;
     // Note that objects are generally not released in this code, because they
     // don't need to be: the entire Environment is thrown away at the end.
 
@@ -554,7 +582,9 @@ fn app_picker_inner(
     let mut copyright_info_stuff = setup_copyright_info(env, delegate, main_view, app_frame);
     let mut copyright_info_page_idx = 0;
 
-    let quick_options_stuff = setup_quick_options(env, delegate, main_view, app_frame);
+    // Built once an app has been picked: before that there is no
+    // Settings.bundle to describe. `None` means "not built yet".
+    let mut quick_options_stuff: Option<QuickOptionsStuff> = None;
     let mut quick_options_scale_hack: Option<NonZeroU32> = None;
     let mut quick_options_fullscreen: Option<()> = None;
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
@@ -599,16 +629,10 @@ fn app_picker_inner(
             }),
         );
     }
-    update_scale_hack_buttons(
-        env,
-        &quick_options_stuff.scale_hack_buttons,
-        quick_options_scale_hack,
-    );
-    update_orientation_buttons(
-        env,
-        &quick_options_stuff.orientation_buttons,
-        quick_options_orientation,
-    );
+    if let Some(stuff) = &quick_options_stuff {
+        update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
+        update_orientation_buttons(env, &stuff.orientation_buttons, quick_options_orientation);
+    }
 
     () = msg![env; window makeKeyAndVisible];
 
@@ -622,6 +646,14 @@ fn app_picker_inner(
         if icon_tapped != nil {
             match icon_grid_stuff.as_ref().unwrap().icon_map.get(&icon_tapped) {
                 Some(&TappedIcon::App(app_idx)) => {
+                    // Remember which app this is so its Settings.bundle
+                    // toggles can be shown in the Quick options panel later.
+                    #[allow(unused_assignments)]
+                    {
+                        selected_app_path = Some(
+                            apps.as_ref().unwrap()[app_idx].path.clone(),
+                        );
+                    }
                     // Provide visual feedback that the app has been picked
                     // (it may take a while for the splash screen to appear etc)
                     () = msg![env; icon_tapped setAlpha:(0.5 as CGFloat)];
@@ -681,18 +713,28 @@ fn app_picker_inner(
                 copyright_info_page_idx,
             );
         } else if std::mem::take(&mut host_obj.quick_options_show) {
-            () = msg![env; (quick_options_stuff.main_view) setHidden:false];
+            let app_path = selected_app_path.clone();
+            let stuff = quick_options_stuff.get_or_insert_with(|| {
+                setup_quick_options(env, delegate, main_view, app_frame, app_path.as_deref())
+            });
+            () = msg![env; (stuff.main_view) setHidden:false];
         } else if std::mem::take(&mut host_obj.quick_options_hide) {
-            () = msg![env; (quick_options_stuff.main_view) setHidden:true];
+            if let Some(stuff) = &quick_options_stuff {
+                () = msg![env; (stuff.main_view) setHidden:true];
+            }
         } else if std::mem::take(&mut host_obj.quick_options_prev_page) {
-            if quick_options_page != 0 {
-                quick_options_page -= 1;
-                update_quick_options_page(env, &quick_options_stuff, quick_options_page);
+            if let Some(stuff) = &quick_options_stuff {
+                if quick_options_page != 0 {
+                    quick_options_page -= 1;
+                    update_quick_options_page(env, stuff, quick_options_page);
+                }
             }
         } else if std::mem::take(&mut host_obj.quick_options_next_page) {
-            if quick_options_page + 1 < quick_options_stuff.page_views.len() {
-                quick_options_page += 1;
-                update_quick_options_page(env, &quick_options_stuff, quick_options_page);
+            if let Some(stuff) = &quick_options_stuff {
+                if quick_options_page + 1 < stuff.page_count {
+                    quick_options_page += 1;
+                    update_quick_options_page(env, stuff, quick_options_page);
+                }
             }
         } else if let Some(enabled) = std::mem::take(&mut host_obj.print_fps) {
             quick_options_print_fps = enabled;
@@ -702,69 +744,114 @@ fn app_picker_inner(
             quick_options_ignore_gl_errors = enabled;
         } else if let Some(enabled) = std::mem::take(&mut host_obj.error_popups) {
             quick_options_error_popups = enabled;
+        } else if host_obj.setting_toggled != nil {
+            let switch = std::mem::replace(&mut host_obj.setting_toggled, nil);
+            let value = host_obj.setting_toggled_value;
+            let idx = quick_options_stuff
+                .as_ref()
+                .and_then(|stuff| stuff.app_settings.index_of_switch(switch));
+            // Mirror what the system Settings app does: write the value the
+            // app asked for, flush it to disk, then leave (apps read these
+            // preferences at launch, so the new value applies next run).
+            let toggle = idx.and_then(|i| {
+                quick_options_stuff
+                    .as_ref()
+                    .and_then(|stuff| stuff.app_settings.toggles.get(i))
+            });
+            if let Some(toggle) = toggle {
+                crate::frameworks::foundation::ns_user_defaults::set_app_default_string(
+                    env,
+                    &toggle.key,
+                    if value {
+                        &toggle.true_value
+                    } else {
+                        &toggle.false_value
+                    },
+                );
+            }
+            echo!("Saved app settings, quitting so they take effect.");
+            crate::frameworks::uikit::ui_application::exit(env);
         } else if std::mem::take(&mut host_obj.scale_hack_default) {
             quick_options_scale_hack = None;
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_scale_hack_buttons(
+                    env,
+                    &stuff.scale_hack_buttons,
+                    quick_options_scale_hack,
+                );
+            }
         } else if std::mem::take(&mut host_obj.scale_hack1) {
             quick_options_scale_hack = Some(NonZeroU32::new(1).unwrap());
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_scale_hack_buttons(
+                    env,
+                    &stuff.scale_hack_buttons,
+                    quick_options_scale_hack,
+                );
+            }
         } else if std::mem::take(&mut host_obj.scale_hack2) {
             quick_options_scale_hack = Some(NonZeroU32::new(2).unwrap());
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_scale_hack_buttons(
+                    env,
+                    &stuff.scale_hack_buttons,
+                    quick_options_scale_hack,
+                );
+            }
         } else if std::mem::take(&mut host_obj.scale_hack3) {
             quick_options_scale_hack = Some(NonZeroU32::new(3).unwrap());
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_scale_hack_buttons(
+                    env,
+                    &stuff.scale_hack_buttons,
+                    quick_options_scale_hack,
+                );
+            }
         } else if std::mem::take(&mut host_obj.scale_hack4) {
             quick_options_scale_hack = Some(NonZeroU32::new(4).unwrap());
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_scale_hack_buttons(
+                    env,
+                    &stuff.scale_hack_buttons,
+                    quick_options_scale_hack,
+                );
+            }
         } else if std::mem::take(&mut host_obj.orientation_default) {
             quick_options_orientation = None;
-            update_orientation_buttons(
-                env,
-                &quick_options_stuff.orientation_buttons,
-                quick_options_orientation,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_orientation_buttons(
+                    env,
+                    &stuff.orientation_buttons,
+                    quick_options_orientation,
+                );
+            }
         } else if std::mem::take(&mut host_obj.orientation_portrait_upside_down) {
             quick_options_orientation = Some(DeviceOrientation::PortraitUpsideDown);
-            update_orientation_buttons(
-                env,
-                &quick_options_stuff.orientation_buttons,
-                quick_options_orientation,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_orientation_buttons(
+                    env,
+                    &stuff.orientation_buttons,
+                    quick_options_orientation,
+                );
+            }
         } else if std::mem::take(&mut host_obj.orientation_landscape_left) {
             quick_options_orientation = Some(DeviceOrientation::LandscapeLeft);
-            update_orientation_buttons(
-                env,
-                &quick_options_stuff.orientation_buttons,
-                quick_options_orientation,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_orientation_buttons(
+                    env,
+                    &stuff.orientation_buttons,
+                    quick_options_orientation,
+                );
+            }
         } else if std::mem::take(&mut host_obj.orientation_landscape_right) {
             quick_options_orientation = Some(DeviceOrientation::LandscapeRight);
-            update_orientation_buttons(
-                env,
-                &quick_options_stuff.orientation_buttons,
-                quick_options_orientation,
-            );
+            if let Some(stuff) = &quick_options_stuff {
+                update_orientation_buttons(
+                    env,
+                    &stuff.orientation_buttons,
+                    quick_options_orientation,
+                );
+            }
         } else if let Some(enabled) = std::mem::take(&mut host_obj.analog_stick_tilt_controls) {
             quick_options_analog_stick_tilt_controls = enabled;
         } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
@@ -1421,12 +1508,20 @@ fn change_copyright_page(
     () = msg![env; next_page_button setHidden:(Some(page_idx) == *last_page_idx)];
 }
 
+enum RowKind {
+    Label(&'static str),
+    Buttons(&'static [(&'static str, &'static str)]),
+    Switch(&'static str, bool),
+}
+
 struct QuickOptionsStuff {
     main_view: id,
     page_views: Vec<id>,
     page_label: id,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
+    app_settings: AppSettingsStuff,
+    page_count: usize,
 }
 
 fn setup_quick_options(
@@ -1434,6 +1529,7 @@ fn setup_quick_options(
     delegate: id,
     super_view: id,
     app_frame: CGRect,
+    selected_app_path: Option<&Path>,
 ) -> QuickOptionsStuff {
     // UIView*
     let main_frame = CGRect {
@@ -1454,11 +1550,6 @@ fn setup_quick_options(
 
     let divider = 40.0;
 
-    enum RowKind {
-        Label(&'static str),
-        Buttons(&'static [(&'static str, &'static str)]),
-        Switch(&'static str, bool),
-    }
     let page1 = vec![
         RowKind::Label("Scale hack"),
         RowKind::Buttons(&[
@@ -1498,11 +1589,43 @@ fn setup_quick_options(
         RowKind::Switch("errorPopups:", true),
     ];
     let pages = [page1, page2, page3];
+    // Any app that ships a `Settings.bundle` gets an extra page exposing its
+    // "device Settings" toggles, since there's no Settings app to host them.
+    let app_settings = selected_app_path
+        .map(crate::environment::settings_bundle::load_toggles)
+        .unwrap_or_default();
+    let toggles = app_settings.clone();
+    let pages = if toggles.is_empty() {
+        Pages::Fixed(pages)
+    } else {
+        Pages::WithSettings(pages, toggles)
+    };
+    let page_count = match &pages {
+        Pages::Fixed(pages) => pages.len(),
+        Pages::WithSettings(pages, toggles) => pages.len() + toggles.len(),
+    };
     let nav_height: CGFloat = 50.0;
 
     let mut button_rows = Vec::new();
     let mut page_views = Vec::new();
-    for page in pages.iter() {
+    let mut app_settings_switches = Vec::new();
+    for page_idx in 0..page_count {
+        // Settings toggles get one page each: one label plus one switch does
+        // not fit proportionally with the other pages, and one-per-page keeps
+        // the switch big enough to hit on a phone.
+        let settings_toggle = match &pages {
+            Pages::WithSettings(pages, toggles) if page_idx >= pages.len() => {
+                Some(&toggles[page_idx - pages.len()])
+            }
+            _ => None,
+        };
+        let page: &[RowKind] = match &pages {
+            Pages::Fixed(pages) => &pages[page_idx],
+            Pages::WithSettings(pages, _) => {
+                pages.get(page_idx).map_or(&[][..], |p| &p[..])
+            }
+        };
+
         // Container view for this page, so pages can be shown and hidden
         // independently.
         let page_view: id = msg_class![env; UIView alloc];
@@ -1514,6 +1637,49 @@ fn setup_quick_options(
         () = msg![env; page_view setHidden:hidden];
         () = msg![env; main_view addSubview:page_view];
         page_views.push(page_view);
+
+        if let Some(toggle) = settings_toggle {
+            // App name and the toggle's own title, then the switch.
+            let name = app_display_name_ns_string(env, selected_app_path);
+            let name_label = make_centered_label(
+                env,
+                page_view,
+                name,
+                main_frame.size,
+                main_frame.size.height / 2.0 - 40.0,
+            );
+            let _ = name_label;
+            let box_title = format!("“{}”", toggle.title);
+            let title = ns_string::from_rust_string(env, box_title);
+            make_centered_label(
+                env,
+                page_view,
+                title,
+                main_frame.size,
+                main_frame.size.height / 2.0 - 10.0,
+            );
+
+            let switch_frame = CGRect {
+                origin: CGPoint {
+                    x: main_frame.size.width / 2.0 - 94.0 / 2.0,
+                    y: main_frame.size.height / 2.0 + 20.0,
+                },
+                size: Default::default(),
+            };
+            let switch: id = msg_class![env; UISwitch alloc];
+            let switch: id = msg![env; switch initWithFrame:switch_frame];
+            () = msg![env; switch setOn:(toggle.current_value(env))];
+            // Tag the switch with its index so the action method can tell the
+            // toggles apart without a separate object per toggle.
+            () = msg![env; switch setTag:(app_settings_switches.len() as crate::frameworks::foundation::NSInteger)];
+            let selector = env.objc.lookup_selector("settingToggled:").unwrap();
+            () = msg![env; switch addTarget:delegate
+                                     action:selector
+                           forControlEvents:UIControlEventValueChanged];
+            () = msg![env; page_view addSubview:switch];
+            app_settings_switches.push(switch);
+            continue;
+        }
 
         for (i, row) in page.iter().enumerate() {
             let row_center = divider
@@ -1618,7 +1784,7 @@ fn setup_quick_options(
     };
     let page_label: id = msg_class![env; UILabel alloc];
     let page_label: id = msg![env; page_label initWithFrame:page_label_frame];
-    let text = ns_string::get_static_str(env, "1 / 3");
+    let text = ns_string::from_rust_string(env, format!("1 / {page_count}"));
     () = msg![env; page_label setText:text];
     () = msg![env; page_label setTextAlignment:UITextAlignmentCenter];
     () = msg![env; main_view addSubview:page_label];
@@ -1660,7 +1826,66 @@ fn setup_quick_options(
         page_label,
         scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
         orientation_buttons: button_rows[1][..].try_into().unwrap(),
+        app_settings: AppSettingsStuff {
+            toggles: app_settings,
+            switches: app_settings_switches,
+        },
+        page_count,
     }
+}
+
+/// The fixed pages plus, optionally, the app's own Settings.bundle toggles.
+enum Pages {
+    Fixed([Vec<RowKind>; 3]),
+    WithSettings([Vec<RowKind>; 3], Vec<crate::environment::settings_bundle::SettingsToggle>),
+}
+
+impl std::ops::Index<usize> for Pages {
+    type Output = [RowKind];
+    fn index(&self, i: usize) -> &[RowKind] {
+        match self {
+            Pages::Fixed(pages) => &pages[i],
+            Pages::WithSettings(pages, _) => &pages[i],
+        }
+    }
+}
+
+fn make_centered_label(
+    env: &mut Environment,
+    super_view: id,
+    text: id,
+    super_view_size: CGSize,
+    center_y: CGFloat,
+) -> id {
+    let frame = CGRect {
+        origin: CGPoint {
+            x: 0.0,
+            y: center_y - 30.0 / 2.0,
+        },
+        size: CGSize {
+            width: super_view_size.width,
+            height: 30.0,
+        },
+    };
+    let label: id = msg_class![env; UILabel alloc];
+    let label: id = msg![env; label initWithFrame:frame];
+    () = msg![env; label setText:text];
+    () = msg![env; label setTextAlignment:UITextAlignmentCenter];
+    () = msg![env; super_view addSubview:label];
+    label
+}
+
+/// The app's display name as an `NSString*`, for labelling its settings pages.
+fn app_display_name_ns_string(env: &mut Environment, app_path: Option<&Path>) -> id {
+    let Some(app_path) = app_path else {
+        return nil;
+    };
+    let Ok((bundle, _fs)) = BundleData::open_any(app_path).and_then(|data| {
+        Bundle::new_bundle_and_fs_from_host_path(data, /* read_only: */ true)
+    }) else {
+        return nil;
+    };
+    ns_string::from_rust_string(env, bundle.display_name().to_owned())
 }
 
 fn update_quick_options_page(env: &mut Environment, stuff: &QuickOptionsStuff, page_idx: usize) {

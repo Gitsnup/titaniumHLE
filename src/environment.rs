@@ -9,6 +9,7 @@
 //! via the re-exports one level up.
 
 pub mod app_picker;
+pub mod settings_bundle;
 mod mutex;
 mod nullable_box;
 
