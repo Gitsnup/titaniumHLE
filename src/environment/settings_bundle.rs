@@ -68,11 +68,18 @@ fn app_prefs_plist_path(app_path: &std::path::Path) -> Result<std::path::PathBuf
 }
 
 /// Read a single string preference for the app, host-side, from its sandbox.
-/// Returns `None` if the app has never saved a value for it.
+/// Returns `None` if the app has never saved a value for it. Boolean values
+/// (which is what iOS's own Settings app writes for toggle switches) are
+/// normalised to "YES"/"NO" strings.
 pub fn read_app_pref(app_path: &std::path::Path, key: &str) -> Option<String> {
     let value = Value::from_file(app_prefs_plist_path(app_path).ok()?).ok()?;
     let dict = value.into_dictionary()?;
-    dict.get(key)?.as_string().map(str::to_owned)
+    match dict.get(key)? {
+        Value::Boolean(true) => Some("YES".to_string()),
+        Value::Boolean(false) => Some("NO".to_string()),
+        Value::String(s) => Some(s.clone()),
+        _ => None,
+    }
 }
 
 /// Write a single string preference for the app, host-side, into its
@@ -101,7 +108,18 @@ pub fn write_app_pref(app_path: &std::path::Path, key: &str, value: &str) -> Res
             .unwrap_or_else(plist::Dictionary::new),
         Err(_) => plist::Dictionary::new(),
     };
-    dict.insert(key.to_owned(), Value::String(value.to_owned()));
+    // iOS's own Settings app writes actual booleans to the preferences plist
+    // for toggle switches, so an app reading its key back as a boolean or
+    // comparing objects gets what it expects. Non-standard true/false values
+    // (which the plist format allows) stay strings.
+    let value = if value.eq_ignore_ascii_case("YES") {
+        Value::Boolean(true)
+    } else if value.eq_ignore_ascii_case("NO") {
+        Value::Boolean(false)
+    } else {
+        Value::String(value.to_owned())
+    };
+    dict.insert(key.to_owned(), value);
 
     Value::Dictionary(dict)
         .to_file_binary(&plist_path)
@@ -114,27 +132,19 @@ pub fn write_app_pref(app_path: &std::path::Path, key: &str, value: &str) -> Res
 /// cannot be parsed; this is a best-effort convenience, not something that
 /// should ever take an app down.
 pub fn load_toggles(app_path: &std::path::Path) -> Vec<SettingsToggle> {
-    let Ok((_bundle, fs)) = BundleData::open_any(app_path).and_then(|data| {
+    let Ok((bundle, fs)) = BundleData::open_any(app_path).and_then(|data| {
         crate::bundle::Bundle::new_bundle_and_fs_from_host_path(data, /* read_only: */ true)
     }) else {
         return Vec::new();
     };
 
-    // Settings.bundle is a directory inside the app bundle, not part of the
-    // bundle's resource map, so it has to be read from the host filesystem.
-    // For an .ipa it lives at Payload/<name>.app/Settings.bundle; touchHLE
-    // reads the bundle itself by locating the single .app directory inside.
-    let settings_root: String = match app_path.extension().and_then(|e| e.to_str()) {
-        Some("ipa") => {
-            let Some(app_dir) = single_app_dir_in_ipa(app_path) else {
-                return Vec::new();
-            };
-            format!("{app_dir}/Settings.bundle/Root.plist")
-        }
-        _ => "Settings.bundle/Root.plist".to_string(),
-    };
+    // Settings.bundle lives inside the app bundle. Relative paths resolve
+    // against the fake filesystem's working directory, not the bundle, so
+    // read through the bundle's own guest path; that works for both .app
+    // directories and .ipa archives (where the Payload/ prefix is hidden).
+    let settings_root = bundle.bundle_path().join("Settings.bundle/Root.plist");
 
-    let Ok(bytes) = fs.read(settings_root.as_str()) else {
+    let Ok(bytes) = fs.read(&settings_root) else {
         return Vec::new();
     };
     let Ok(root) = Value::from_reader(Cursor::new(&bytes[..])) else {
@@ -204,30 +214,6 @@ pub fn load_toggles(app_path: &std::path::Path) -> Vec<SettingsToggle> {
         });
     }
     toggles
-}
-
-/// Find the single `<name>.app` directory inside an .ipa (a zip). touchHLE
-/// only ever looks at the first one, which is what we do here too.
-fn single_app_dir_in_ipa(app_path: &std::path::Path) -> Option<String> {
-    let file = std::fs::File::open(app_path).ok()?;
-    let mut archive = zip::ZipArchive::new(file).ok()?;
-    let mut app_dir = None;
-    for i in 0..archive.len() {
-        let Ok(name) = archive.by_index_raw(i).map(|f| f.name().to_string()) else {
-            continue;
-        };
-        let Some(rest) = name.strip_prefix("Payload/") else {
-            continue;
-        };
-        let Some((dir, _)) = rest.split_once('/') else {
-            continue;
-        };
-        if dir.ends_with(".app") {
-            app_dir = Some(format!("Payload/{dir}"));
-            break;
-        }
-    }
-    app_dir
 }
 
 /// Parse a `.strings` file (the old-style `"key" = "value";` format; plists
@@ -424,5 +410,76 @@ mod tests {
     #[test]
     fn utf8_passthrough() {
         assert_eq!(decode_strings_file(b"\"a\" = \"b\";\n"), "\"a\" = \"b\";\n");
+    }
+
+    /// Build a minimal .app bundle with a `Settings.bundle` containing one
+    /// toggle, and return the path to it.
+    fn make_test_app(base: &std::path::Path) -> std::path::PathBuf {
+        let app_dir = base.join("ToggleTest.app");
+        let settings_dir = app_dir.join("Settings.bundle");
+        std::fs::create_dir_all(&settings_dir).unwrap();
+        std::fs::write(
+            app_dir.join("Info.plist"),
+            format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<plist version=\"1.0\"><dict>\
+<key>CFBundleIdentifier</key><string>com.touchhle.toggletest</string>\
+<key>CFBundleName</key><string>ToggleTest</string>\
+<key>CFBundleExecutable</key><string>ToggleTest</string>\
+<key>CFBundlePackageType</key><string>APPL</string>\
+</dict></plist>"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            settings_dir.join("Root.plist"),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<plist version=\"1.0\"><dict>\
+<key>PreferenceSpecifiers</key><array><dict>\
+<key>Type</key><string>PSToggleSwitchSpecifier</string>\
+<key>Title</key><string>Sound</string>\
+<key>Key</key><string>sound_enabled</string>\
+<key>DefaultValue</key><true/>\
+</dict></array>\
+</dict></plist>",
+        )
+        .unwrap();
+        app_dir
+    }
+
+    #[test]
+    fn settings_toggle_roundtrip() {
+        let base = std::env::temp_dir().join("touchhle_toggle_test");
+        let _ = std::fs::remove_dir_all(&base);
+        let app_dir = make_test_app(&base);
+
+        let toggles = load_toggles(&app_dir);
+        assert_eq!(toggles.len(), 1);
+        let toggle = &toggles[0];
+        assert_eq!(toggle.key, "sound_enabled");
+        assert_eq!(toggle.title, "Sound");
+        // No saved value: fall back to the bundle's default.
+        assert!(toggle.current_value(Some(&app_dir)) == toggle.default_value);
+
+        // A write must be readable back and reflected in current_value.
+        write_app_pref(&app_dir, &toggle.key, "NO").unwrap();
+        assert_eq!(read_app_pref(&app_dir, &toggle.key).as_deref(), Some("NO"));
+        assert!(!toggle.current_value(Some(&app_dir)));
+        write_app_pref(&app_dir, &toggle.key, "YES").unwrap();
+        assert_eq!(read_app_pref(&app_dir, &toggle.key).as_deref(), Some("YES"));
+        assert!(toggle.current_value(Some(&app_dir)));
+
+        // iOS's Settings app writes booleans for toggles: reading one back
+        // must also work (it is normalised to YES/NO).
+        let plist_path = app_prefs_plist_path(&app_dir).unwrap();
+        let mut dict = plist::Dictionary::new();
+        dict.insert("sound_enabled".to_string(), Value::Boolean(false));
+        Value::Dictionary(dict).to_file_binary(&plist_path).unwrap();
+        assert!(!toggle.current_value(Some(&app_dir)));
+
+        std::fs::remove_dir_all(&base).ok();
+        let _ = std::fs::remove_dir_all(
+            std::path::Path::new(".").join("touchHLE_sandbox/com.touchhle.toggletest"),
+        );
     }
 }
