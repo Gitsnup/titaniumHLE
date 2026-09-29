@@ -225,7 +225,9 @@ fn init_common(env: &mut Environment, this: id) -> id {
 
 /// Debug helper: dump the whole view tree (class, id, frame, flags) to the
 /// host log. Enabled by setting TOUCHHLE_DUMP_VIEWS=1; the dump happens on the
-/// first main-loop tick, i.e. after the app finishes launching.
+/// first main-loop tick, i.e. the first time the guest yields control back to
+/// the host (`SVC_RETURN_TO_HOST`). That is early in the app's run — shortly
+/// after startup, not after launch finishes.
 pub(crate) fn debug_dump_view_tree_if_requested(env: &mut Environment) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static DONE: AtomicBool = AtomicBool::new(false);
