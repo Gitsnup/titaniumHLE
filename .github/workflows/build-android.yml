@@ -1,0 +1,114 @@
+name: Build TitaniumHLE (Android)
+
+on:
+  push:
+    branches: [ "trunk" ]
+  pull_request:
+    branches: [ "trunk" ]
+  create: # for tags
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-android:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    # actions/checkout really doesn't work well with git-describe for some
+    # reason (most likely it strips the annotation off the tag somehow).
+    - name: Checkout TitaniumHLE
+      shell: bash # windows :)
+      run: |
+        mkdir -p "$GITHUB_WORKSPACE"
+        git clone https://github.com/gitsnup/titaniumHLE "$GITHUB_WORKSPACE"
+        cd "$GITHUB_WORKSPACE"
+        git fetch origin "$GITHUB_REF"
+        git checkout "$GITHUB_SHA" # avoid race condition if branch/tag changes
+    - name: Get Submodules
+      run: git submodule update --init
+    - name: Try to get cached copy of Boost
+      id: cache-boost
+      uses: actions/cache@v3
+      with:
+        path: vendor/boost
+        key: boost_1_81_0
+    - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+      name: Download Boost
+      run: curl -L -o boost_1_81_0.7z "https://archives.boost.io/release/1.81.0/source/boost_1_81_0.7z"
+    - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+      name: Extract Boost
+      run: 7z -ovendor x boost_1_81_0.7z && mv vendor/boost_1_81_0 vendor/boost
+    - name: Try to get cached copy of cmake
+      id: cache-cmake
+      uses: actions/cache@v3
+      with:
+        path: vendor/cmake
+        key: cmake_3_31_6_linux
+    - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
+      name: Download Cmake
+      run: curl -L -O "https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz"
+    - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
+      name: Extract Cmake
+      run: tar xzvf "cmake-3.31.6-linux-x86_64.tar.gz" -C vendor && mv vendor/cmake-3.31.6-linux-x86_64 vendor/cmake
+    - name: Install AArch64 Android Rust toolchain
+      run: rustup target add aarch64-linux-android
+    - name: Install cargo-ndk
+      run: cargo install cargo-ndk@3.5.4
+    # Gradle version compatibility is a nightmare and we refuse to use gradlew.
+    - name: Try to get a cached copy of Gradle
+      id: cache-gradle
+      uses: actions/cache@v3
+      with:
+        path: gradle
+        key: gradle-8.11.1
+    - if: ${{ steps.cache-gradle.outputs.cache-hit != 'true' }}
+      name: Download Gradle
+      run: curl -L -o gradle-8.11.1-bin.zip "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip"
+    - if: ${{ steps.cache-gradle.outputs.cache-hit != 'true' }}
+      name: Extract Gradle
+      run: 7z -ogradle x gradle-8.11.1-bin.zip
+    # We need to install the correct version of Android NDK manually
+    - name: Try to get a cached copy of Android NDK
+      id: cache-android-ndk
+      uses: actions/cache@v3
+      with:
+        path: android-ndk
+        key: android-ndk-r25c
+    - if: ${{ steps.cache-android-ndk.outputs.cache-hit != 'true' }}
+      name: Download Android NDK
+      run: curl -L -o android-ndk-r25c-linux.zip "https://dl.google.com/android/repository/android-ndk-r25c-linux.zip"
+    - if: ${{ steps.cache-android-ndk.outputs.cache-hit != 'true' }}
+      name: Extract Android NDK
+      run: 7z -oandroid-ndk -snld x android-ndk-r25c-linux.zip
+    - name: Link Android NDK
+      run: ln -s $PWD'/android-ndk/android-ndk-r25c' $ANDROID_SDK_ROOT'/ndk/25.2.9519653'
+    # Why isn't there a command for this?
+    - name: Generate local.properties file
+      run: echo 'sdk.dir='$ANDROID_SDK_ROOT > android/local.properties
+    - name: Lint
+      run: dev-scripts/lint.sh ndk -t arm64-v8a
+      env:
+        # The version should match the ndkVersion defined in `android\app\build.gradle`
+        ANDROID_NDK_ROOT: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
+        ANDROID_NDK: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
+        ANDROID_NDK_HOME: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
+        CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
+    # Don't attempt to run tests (can't run on Android).
+    # The release APK is signed with the committed, non-changing keystore; the
+    # debug APK is signed with the usual Android debug key.
+    - name: Build for Android
+      run: cd android && ../gradle/gradle-8.11.1/bin/gradle assembleRelease assembleDebug && mv app/build/outputs/apk/release/app-release.apk ../touchHLE.apk && mv app/build/outputs/apk/debug/app-debug.apk ../touchHLE_debug.apk
+      env:
+        # The version should match the ndkVersion defined in `android\app\build.gradle`
+        ANDROID_NDK_ROOT: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
+        CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
+    - uses: actions/upload-artifact@v4
+      with:
+        name: touchHLE_Android_AArch64_release
+        path: touchHLE.apk
+    - uses: actions/upload-artifact@v4
+      with:
+        name: touchHLE_Android_AArch64_debug
+        path: touchHLE_debug.apk

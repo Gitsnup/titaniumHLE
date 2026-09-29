@@ -80,9 +80,20 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    signingConfigs {
+        create("release") {
+            // A committed keystore is used so that the signing key never
+            // changes between builds. As this repository is public, that key
+            // provides no secrecy, only build-over-build consistency.
+            storeFile = rootProject.file("keystore/touchhle-release.jks")
+            storePassword = "titaniumhle"
+            keyAlias = "titaniumhle"
+            keyPassword = "titaniumhle"
+        }
+    }
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isDebuggable = true // allow use of ADB to manage files, etc
         }
