@@ -49,24 +49,6 @@ struct AppInfo {
     icon_ui_image: Option<id>,
 }
 
-/// File in the user data directory storing the path of the most recently
-/// launched app. The picker never comes back after an app is launched
-/// (quitting the app exits touchHLE), so the choice has to be persisted for
-/// the Quick options panel to be able to show that app's `Settings.bundle`
-/// toggles on the next run.
-const LAST_RUN_APP_FILE: &str = "last_run_app.txt";
-
-fn last_run_app_path() -> Option<PathBuf> {
-    let contents =
-        std::fs::read_to_string(paths::user_data_base_path().join(LAST_RUN_APP_FILE)).ok()?;
-    let path = PathBuf::from(contents.trim());
-    if path.as_os_str().is_empty() {
-        None
-    } else {
-        Some(path)
-    }
-}
-
 pub fn app_picker(options: Options) -> Result<(PathBuf, Vec<String>), String> {
     let apps_dir = paths::user_data_base_path().join(paths::APPS_DIR);
 
@@ -180,11 +162,21 @@ struct AppPickerDelegateHostObject {
 }
 impl HostObject for AppPickerDelegateHostObject {}
 
-/// The toggles declared by the selected app's `Settings.bundle`, plus the
-/// switches that display them. Empty for apps without a settings bundle.
+/// A toggle from an app's `Settings.bundle`, together with the app it
+/// belongs to. Toggles from every installed app are shown in the Quick
+/// options panel, since there's no Settings app to host them.
+#[derive(Clone)]
+struct AppToggle {
+    app_path: PathBuf,
+    app_name: String,
+    toggle: crate::environment::settings_bundle::SettingsToggle,
+}
+
+/// The toggles declared by the installed apps' `Settings.bundle` files, plus
+/// the switches that display them. Empty if no app ships a settings bundle.
 #[derive(Default)]
 struct AppSettingsStuff {
-    toggles: Vec<crate::environment::settings_bundle::SettingsToggle>,
+    toggles: Vec<AppToggle>,
     switches: Vec<id>,
 }
 
@@ -391,9 +383,6 @@ fn app_picker_inner(
     mut apps: Result<Vec<AppInfo>, String>,
 ) -> (PathBuf, Vec<String>) {
     let mut option_args = Vec::new();
-    // Path of the app whose icon was tapped, if any. This is only used to show
-    // that app's `Settings.bundle` toggles in the Quick options panel.
-    let mut selected_app_path: Option<PathBuf> = None;
     // Note that objects are generally not released in this code, because they
     // don't need to be: the entire Environment is thrown away at the end.
 
@@ -614,12 +603,9 @@ fn app_picker_inner(
     let mut copyright_info_stuff = setup_copyright_info(env, delegate, main_view, app_frame);
     let mut copyright_info_page_idx = 0;
 
-    // Built once an app has been picked: before that there is no
-    // Settings.bundle to describe. `None` means "not built yet".
+    // Built lazily on first open of the Quick options panel. It shows every
+    // installed app's Settings.bundle toggles, so it never needs rebuilding.
     let mut quick_options_stuff: Option<QuickOptionsStuff> = None;
-    // The app the current panel was built for, so it can be rebuilt when the
-    // selection changes. Matches `quick_options_stuff`.
-    let mut quick_options_built_for: Option<PathBuf> = None;
     let mut quick_options_scale_hack: Option<NonZeroU32> = None;
     let mut quick_options_fullscreen: Option<()> = None;
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
@@ -681,24 +667,6 @@ fn app_picker_inner(
         if icon_tapped != nil {
             match icon_grid_stuff.as_ref().unwrap().icon_map.get(&icon_tapped) {
                 Some(&TappedIcon::App(app_idx)) => {
-                    // Remember which app this is so its Settings.bundle
-                    // toggles can be shown in the Quick options panel. The
-                    // picker never comes back after the app is launched, so
-                    // also persist the choice for the next run.
-                    let picked_app_path = apps.as_ref().unwrap()[app_idx].path.clone();
-                    // The value is only read if the picker is re-entered,
-                    // which currently can't happen after a pick; it's kept
-                    // for when that changes.
-                    #[allow(unused_assignments)]
-                    {
-                        selected_app_path = Some(picked_app_path.clone());
-                    }
-                    if let Err(e) = std::fs::write(
-                        paths::user_data_base_path().join(LAST_RUN_APP_FILE),
-                        picked_app_path.display().to_string(),
-                    ) {
-                        echo!("Warning: couldn't save the last-run app: {e}");
-                    }
                     // Provide visual feedback that the app has been picked
                     // (it may take a while for the splash screen to appear etc)
                     () = msg![env; icon_tapped setAlpha:(0.5 as CGFloat)];
@@ -758,27 +726,13 @@ fn app_picker_inner(
                 copyright_info_page_idx,
             );
         } else if std::mem::take(&mut host_obj.quick_options_show) {
-            // The panel describes an app's Settings.bundle, so rebuild it if
-            // the app it describes changed: the app picked this run, or the
-            // last app run in a previous session.
-            let app_path = selected_app_path.clone().or_else(last_run_app_path);
-            let needs_rebuild = match (&quick_options_stuff, &quick_options_built_for) {
-                (Some(_), built_for) => *built_for != app_path,
-                (None, _) => true,
-            };
-            if needs_rebuild {
-                if let Some(old_stuff) = quick_options_stuff.take() {
-                    // Remove the stale panel so it doesn't linger underneath.
-                    () = msg![env; (old_stuff.main_view) removeFromSuperview];
-                }
+            // Built lazily on first open; never needs rebuilding, since it
+            // describes every installed app rather than one selection.
+            if quick_options_stuff.is_none() {
+                let app_list = apps.as_ref().map(|apps| &apps[..]).unwrap_or(&[]);
                 quick_options_stuff = Some(setup_quick_options(
-                    env,
-                    delegate,
-                    main_view,
-                    app_frame,
-                    app_path.as_deref(),
+                    env, delegate, main_view, app_frame, app_list,
                 ));
-                quick_options_built_for = app_path;
                 quick_options_page = 0;
                 let stuff = quick_options_stuff.as_ref().unwrap();
                 update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
@@ -825,31 +779,27 @@ fn app_picker_inner(
             // Mirror what the system Settings app does: write the value the
             // app asked for, flush it to disk, then leave (apps read these
             // preferences at launch, so the new value applies next run).
-            let toggle = idx.and_then(|i| {
+            if let Some(entry) = idx.and_then(|i| {
                 quick_options_stuff
                     .as_ref()
                     .and_then(|stuff| stuff.app_settings.toggles.get(i))
-            });
-            if let Some(toggle) = toggle {
+            }) {
                 // The picker environment has a fake bundle and filesystem, so
                 // the value can't go through the guest's NSUserDefaults here:
-                // write it into the app's own sandbox host-side instead.
-                if let Some(app_path) = &quick_options_built_for {
-                    if let Err(e) = crate::environment::settings_bundle::write_app_pref(
-                        app_path,
-                        &toggle.key,
-                        if value {
-                            &toggle.true_value
-                        } else {
-                            &toggle.false_value
-                        },
-                    ) {
-                        echo!("{e}");
-                    }
+                // write it into the app's own sandbox host-side instead. The
+                // app reads it from there at launch, so stay in the picker.
+                if let Err(e) = crate::environment::settings_bundle::write_app_pref(
+                    &entry.app_path,
+                    &entry.toggle.key,
+                    if value {
+                        &entry.toggle.true_value
+                    } else {
+                        &entry.toggle.false_value
+                    },
+                ) {
+                    echo!("{e}");
                 }
             }
-            echo!("Saved app settings, quitting so they take effect.");
-            crate::frameworks::uikit::ui_application::exit(env);
         } else if std::mem::take(&mut host_obj.scale_hack_default) {
             quick_options_scale_hack = None;
             if let Some(stuff) = &quick_options_stuff {
@@ -1586,7 +1536,7 @@ fn setup_quick_options(
     delegate: id,
     super_view: id,
     app_frame: CGRect,
-    selected_app_path: Option<&Path>,
+    apps: &[AppInfo],
 ) -> QuickOptionsStuff {
     // UIView*
     let main_frame = CGRect {
@@ -1646,16 +1596,24 @@ fn setup_quick_options(
         RowKind::Switch("errorPopups:", true),
     ];
     let pages = [page1, page2, page3];
-    // Any app that ships a `Settings.bundle` gets an extra page exposing its
+    // Every app that ships a `Settings.bundle` gets extra pages exposing its
     // "device Settings" toggles, since there's no Settings app to host them.
-    let app_settings = selected_app_path
-        .map(crate::environment::settings_bundle::load_toggles)
-        .unwrap_or_default();
-    let toggles = app_settings.clone();
+    let toggles: Vec<AppToggle> = apps
+        .iter()
+        .flat_map(|app| {
+            crate::environment::settings_bundle::load_toggles(&app.path)
+                .into_iter()
+                .map(move |toggle| AppToggle {
+                    app_path: app.path.clone(),
+                    app_name: app.display_name.clone(),
+                    toggle,
+                })
+        })
+        .collect();
     let pages = if toggles.is_empty() {
         Pages::Fixed(pages)
     } else {
-        Pages::WithSettings(pages, toggles)
+        Pages::WithSettings(pages, toggles.clone())
     };
     let page_count = match &pages {
         Pages::Fixed(pages) => pages.len(),
@@ -1693,9 +1651,9 @@ fn setup_quick_options(
         () = msg![env; main_view addSubview:page_view];
         page_views.push(page_view);
 
-        if let Some(toggle) = settings_toggle {
+        if let Some(entry) = settings_toggle {
             // App name and the toggle's own title, then the switch.
-            let name = app_display_name_ns_string(env, selected_app_path);
+            let name = ns_string::from_rust_string(env, entry.app_name.clone());
             let name_label = make_centered_label(
                 env,
                 page_view,
@@ -1704,7 +1662,7 @@ fn setup_quick_options(
                 main_frame.size.height / 2.0 - 40.0,
             );
             let _ = name_label;
-            let box_title = format!("“{}”", toggle.title);
+            let box_title = format!("“{}”", entry.toggle.title);
             let title = ns_string::from_rust_string(env, box_title);
             make_centered_label(
                 env,
@@ -1723,7 +1681,7 @@ fn setup_quick_options(
             };
             let switch: id = msg_class![env; UISwitch alloc];
             let switch: id = msg![env; switch initWithFrame:switch_frame];
-            () = msg![env; switch setOn:(toggle.current_value(selected_app_path))];
+            () = msg![env; switch setOn:(entry.toggle.current_value(Some(&entry.app_path)))];
             // Tag the switch with its index so the action method can tell the
             // toggles apart without a separate object per toggle.
             () = msg![env; switch setTag:(app_settings_switches.len() as crate::frameworks::foundation::NSInteger)];
@@ -1885,7 +1843,7 @@ fn setup_quick_options(
         scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
         orientation_buttons: button_rows[1][..].try_into().unwrap(),
         app_settings: AppSettingsStuff {
-            toggles: app_settings,
+            toggles,
             switches: app_settings_switches,
         },
         page_count,
@@ -1895,10 +1853,7 @@ fn setup_quick_options(
 /// The fixed pages plus, optionally, the app's own Settings.bundle toggles.
 enum Pages {
     Fixed([Vec<RowKind>; 3]),
-    WithSettings(
-        [Vec<RowKind>; 3],
-        Vec<crate::environment::settings_bundle::SettingsToggle>,
-    ),
+    WithSettings([Vec<RowKind>; 3], Vec<AppToggle>),
 }
 
 impl std::ops::Index<usize> for Pages {
@@ -1937,18 +1892,6 @@ fn make_centered_label(
 }
 
 /// The app's display name as an `NSString*`, for labelling its settings pages.
-fn app_display_name_ns_string(env: &mut Environment, app_path: Option<&Path>) -> id {
-    let Some(app_path) = app_path else {
-        return nil;
-    };
-    let Ok((bundle, _fs)) = BundleData::open_any(app_path).and_then(|data| {
-        Bundle::new_bundle_and_fs_from_host_path(data, /* read_only: */ true)
-    }) else {
-        return nil;
-    };
-    ns_string::from_rust_string(env, bundle.display_name().to_owned())
-}
-
 fn update_quick_options_page(env: &mut Environment, stuff: &QuickOptionsStuff, page_idx: usize) {
     for (i, page_view) in stuff.page_views.iter().enumerate() {
         () = msg![env; (*page_view) setHidden:(i != page_idx)];
