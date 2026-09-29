@@ -551,13 +551,12 @@ impl Window {
                         self.virtual_key_held = true;
                         log!("P key: synthesizing 3-finger touch (pause gesture)");
                         let (x, y) = transform_input_coords(self, (160.0, 240.0), false);
-                        self.event_queue.push_back(Event::TouchesDown(
-                            HashMap::from([
+                        self.event_queue
+                            .push_back(Event::TouchesDown(HashMap::from([
                                 (FingerId::Mouse, (x, y)),
                                 (FingerId::Touch(101), (x + 20.0, y)),
                                 (FingerId::Touch(102), (x - 20.0, y)),
-                            ]),
-                        ));
+                            ])));
                     }
                 }
                 E::KeyUp {

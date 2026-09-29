@@ -11,16 +11,16 @@
 //! and flexible spacers sharing the leftover space.
 
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect};
-use crate::Environment;
 use crate::frameworks::foundation::ns_array;
 use crate::frameworks::foundation::ns_string;
 use crate::objc::{
     id, impl_HostObject_with_superclass, msg, msg_class, msg_send, msg_super, nil, objc_classes,
     release, retain, ClassExports, HostObject, NSZonePtr, SEL,
 };
+use crate::Environment;
 
-use super::ui_control::UIControlEventTouchUpInside;
 use super::ui_control::ui_button::UIButtonTypeRoundedRect;
+use super::ui_control::UIControlEventTouchUpInside;
 use super::ui_control::UIControlStateNormal;
 
 pub(crate) struct UIBarButtonItemHostObject {
@@ -135,7 +135,8 @@ pub(crate) fn layout_bar_button_item(
     })];
     () = msg![env; button layoutSubviews];
 
-    let action_sel: SEL = env.objc
+    let action_sel: SEL = env
+        .objc
         .lookup_selector("_touchHLE_barItemTouchUpInside")
         .unwrap_or_else(|| {
             env.objc

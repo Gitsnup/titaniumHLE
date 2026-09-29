@@ -85,7 +85,11 @@ impl_HostObject_with_superclass!(UINavigationBarHostObject);
 /// `UIBarMetrics` for the height of a bar.
 fn bar_height(bar_metrics: i64) -> CGFloat {
     // Landscape phone metrics are 32pt; the other two are 44pt.
-    if bar_metrics == 2 { 32.0 } else { BAR_HEIGHT }
+    if bar_metrics == 2 {
+        32.0
+    } else {
+        BAR_HEIGHT
+    }
 }
 
 /// Detaches and releases the buttons and labels showing `bar`'s top item.
@@ -94,12 +98,20 @@ fn bar_height(bar_metrics: i64) -> CGFloat {
 /// sends messages, and before the top item changes, so the old item is the
 /// one torn down.
 fn tear_down_top_item_views(env: &mut Environment, bar: id) {
-    let old_buttons = std::mem::take(&mut env.objc.borrow_mut::<UINavigationBarHostObject>(bar).item_buttons);
+    let old_buttons = std::mem::take(
+        &mut env
+            .objc
+            .borrow_mut::<UINavigationBarHostObject>(bar)
+            .item_buttons,
+    );
     release_bar_button_item_buttons(env, old_buttons);
 
     let (title_label, title_view) = {
         let host_obj = env.objc.borrow_mut::<UINavigationBarHostObject>(bar);
-        (std::mem::replace(&mut host_obj.title_label, nil), std::mem::replace(&mut host_obj.title_view, nil))
+        (
+            std::mem::replace(&mut host_obj.title_label, nil),
+            std::mem::replace(&mut host_obj.title_view, nil),
+        )
     };
     for view in [title_label, title_view] {
         if view != nil {
@@ -114,9 +126,16 @@ fn tear_down_top_item_views(env: &mut Environment, bar: id) {
 fn top_item(env: &mut Environment, bar: id) -> id {
     let (pushed, pending) = {
         let host_obj = env.objc.borrow::<UINavigationBarHostObject>(bar);
-        (host_obj.items.last().copied().unwrap_or(nil), host_obj.pending_item)
+        (
+            host_obj.items.last().copied().unwrap_or(nil),
+            host_obj.pending_item,
+        )
     };
-    if pushed != nil { pushed } else { pending }
+    if pushed != nil {
+        pushed
+    } else {
+        pending
+    }
 }
 
 /// Sets the details of `label` from `props` and positions it in `frame`.
@@ -194,14 +213,9 @@ fn layout_top_item(env: &mut Environment, bar: id, item: id, bounds: CGRect) {
         if bar_item == nil {
             continue;
         }
-        let Some(button) = layout_bar_button_item(
-            env,
-            bar_item,
-            padding,
-            bounds.size.width,
-            height,
-            side == 1,
-        ) else {
+        let Some(button) =
+            layout_bar_button_item(env, bar_item, padding, bounds.size.width, height, side == 1)
+        else {
             continue;
         };
         () = msg![env; bar addSubview:button];
@@ -231,13 +245,19 @@ fn layout_top_item(env: &mut Environment, bar: id, item: id, bounds: CGRect) {
                 font_size: 20.0,
                 alignment: 1, // UITextAlignmentCenter
                 shadow_color,
-                shadow_offset: CGSize { width: 0.0, height: -1.0 },
+                shadow_offset: CGSize {
+                    width: 0.0,
+                    height: -1.0,
+                },
                 number_of_lines: 1,
                 text: title,
             },
             CGRect {
                 origin: CGPoint { x: padding, y: 0.0 },
-                size: CGSize { width: bounds.size.width - padding * 2.0, height },
+                size: CGSize {
+                    width: bounds.size.width - padding * 2.0,
+                    height,
+                },
             },
         );
         () = msg![env; bar addSubview:label];
@@ -245,7 +265,9 @@ fn layout_top_item(env: &mut Environment, bar: id, item: id, bounds: CGRect) {
         host_obj.title_label = label;
     }
 
-    env.objc.borrow_mut::<UINavigationBarHostObject>(bar).item_buttons = buttons;
+    env.objc
+        .borrow_mut::<UINavigationBarHostObject>(bar)
+        .item_buttons = buttons;
 }
 
 pub const CLASSES: ClassExports = objc_classes! {

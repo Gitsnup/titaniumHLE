@@ -9,9 +9,9 @@
 //! via the re-exports one level up.
 
 pub mod app_picker;
-pub mod settings_bundle;
 mod mutex;
 mod nullable_box;
+pub mod settings_bundle;
 
 use crate::abi::{CallFromHost, GuestFunction};
 use crate::audio::openal::OpenALManager;

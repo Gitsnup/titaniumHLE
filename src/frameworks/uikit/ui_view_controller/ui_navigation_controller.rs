@@ -43,10 +43,17 @@ const NAVIGATION_BAR_HEIGHT: CGFloat = 44.0;
 /// at the front of the subview list. The content view is not shrunk to make
 /// room for it, matching what this emulator does for the status bar.
 fn add_navigation_bar_to_view(env: &mut Environment, this: id) {
-    if env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar_hidden {
+    if env
+        .objc
+        .borrow::<UINavigationControllerHostObject>(this)
+        .navigation_bar_hidden
+    {
         return;
     }
-    let bar = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar;
+    let bar = env
+        .objc
+        .borrow::<UINavigationControllerHostObject>(this)
+        .navigation_bar;
     if bar == nil {
         return;
     }
@@ -65,7 +72,10 @@ fn add_navigation_bar_to_view(env: &mut Environment, this: id) {
 /// Pushes `view_controller`'s navigation item onto the controller's bar, if
 /// there is a bar. This is what makes a pushed controller's `title` appear.
 fn show_navigation_item_for(env: &mut Environment, this: id, view_controller: id) {
-    let bar = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar;
+    let bar = env
+        .objc
+        .borrow::<UINavigationControllerHostObject>(this)
+        .navigation_bar;
     if bar == nil {
         return;
     }

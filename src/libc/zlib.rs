@@ -7,11 +7,9 @@
 
 use std::collections::HashMap;
 
-use flate2::{Compression, write::GzEncoder};
+use flate2::{write::GzEncoder, Compression};
 
-use super::posix_io::{
-    self, FileDescriptor, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY,
-};
+use super::posix_io::{self, FileDescriptor, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY};
 use crate::dyld::{export_c_func, FunctionExports};
 use std::io::Write;
 
@@ -82,7 +80,11 @@ fn gzopen(env: &mut Environment, path: ConstPtr<u8>, mode: ConstPtr<u8>) -> gzFi
 
     let fd = posix_io::open_direct(env, path, flags);
     if fd == -1 {
-        log!("Warning: gzopen({:?}, {:?}) failed to open file", path_str, mode_str);
+        log!(
+            "Warning: gzopen({:?}, {:?}) failed to open file",
+            path_str,
+            mode_str
+        );
         return Ptr::null();
     }
 
@@ -95,7 +97,11 @@ fn gzopen(env: &mut Environment, path: ConstPtr<u8>, mode: ConstPtr<u8>) -> gzFi
     } else {
         let data = env.libc_state.posix_io.read_fd_all(fd);
         posix_io::close(env, fd);
-        GzFileHostObject::Read { fd: -1, data, pos: 0 }
+        GzFileHostObject::Read {
+            fd: -1,
+            data,
+            pos: 0,
+        }
     };
 
     let file: gzFile = env.mem.alloc_and_write(gzFileS { fd: object.fd() });
@@ -124,7 +130,9 @@ fn finish_write(
     fd: FileDescriptor,
     encoder: Option<GzEncoder<Vec<u8>>>,
 ) -> Result<(), std::io::Error> {
-    let Some(encoder) = encoder else { return Ok(()) };
+    let Some(encoder) = encoder else {
+        return Ok(());
+    };
     let output = encoder.finish()?;
     env.libc_state.posix_io.write_fd_all(fd, &output);
     Ok(())
@@ -160,15 +168,14 @@ fn gzread(env: &mut Environment, file: gzFile, buf: MutVoidPtr, len: GuestUSize)
 }
 
 fn gzwrite(env: &mut Environment, file: gzFile, buf: ConstVoidPtr, len: GuestUSize) -> GuestISize {
-    let Some(GzFileHostObject::Write { encoder, pos, .. }) = env
-        .libc_state
-        .zlib
-        .objects
-        .get_mut(&file)
+    let Some(GzFileHostObject::Write { encoder, pos, .. }) =
+        env.libc_state.zlib.objects.get_mut(&file)
     else {
         return -1;
     };
-    let Some(enc) = encoder.as_mut() else { return -1 };
+    let Some(enc) = encoder.as_mut() else {
+        return -1;
+    };
     let data = env.mem.bytes_at(buf.cast(), len).to_vec();
     match enc.write_all(&data) {
         Ok(()) => {
@@ -185,13 +192,18 @@ fn gzwrite(env: &mut Environment, file: gzFile, buf: ConstVoidPtr, len: GuestUSi
 fn gzflush(env: &mut Environment, file: gzFile, flush: i32) -> i32 {
     // TODO: proper support for flush levels. For now, only flush the pending
     // compressed output to the file descriptor.
-    assert!((0..=5).contains(&flush), "gzflush() with invalid flush level {flush}");
+    assert!(
+        (0..=5).contains(&flush),
+        "gzflush() with invalid flush level {flush}"
+    );
     let Some(GzFileHostObject::Write { fd, encoder, .. }) =
         env.libc_state.zlib.objects.get_mut(&file)
     else {
         return Z_ERRNO;
     };
-    let Some(enc) = encoder.take() else { return Z_OK };
+    let Some(enc) = encoder.take() else {
+        return Z_OK;
+    };
     let fd = *fd;
     encoder.replace(GzEncoder::new(Vec::new(), Compression::default()));
     if let Err(e) = finish_write(env, fd, Some(enc)) {
@@ -305,7 +317,9 @@ fn gzputc(env: &mut Environment, file: gzFile, c: i32) -> i32 {
     else {
         return -1;
     };
-    let Some(enc) = encoder.as_mut() else { return -1 };
+    let Some(enc) = encoder.as_mut() else {
+        return -1;
+    };
     match enc.write_all(&[c as u8]) {
         Ok(()) => {
             *pos += 1;
@@ -349,9 +363,7 @@ fn gzgets(env: &mut Environment, file: gzFile, buf: MutPtr<u8>, len: GuestUSize)
         remaining[..line_end].to_vec()
     };
     let line_len = line.len() as GuestUSize;
-    env.mem
-        .bytes_at_mut(buf, line_len + 1)[..line.len()]
-        .copy_from_slice(&line);
+    env.mem.bytes_at_mut(buf, line_len + 1)[..line.len()].copy_from_slice(&line);
     env.mem.write(buf + line_len, 0u8);
     buf
 }

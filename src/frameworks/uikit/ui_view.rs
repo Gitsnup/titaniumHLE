@@ -164,13 +164,7 @@ pub(crate) fn debug_dump_view_tree_if_requested(env: &mut Environment) {
     if std::env::var("TOUCHHLE_DUMP_VIEWS").as_deref() != Ok("1") {
         return;
     }
-    let windows = env
-        .framework_state
-        .uikit
-        .ui_view
-        .ui_window
-        .windows
-        .clone();
+    let windows = env.framework_state.uikit.ui_view.ui_window.windows.clone();
     for &window in &windows {
         echo!("===== VIEW TREE (window {:?}) =====", window);
         debug_dump_view_tree_inner(env, window, 0);

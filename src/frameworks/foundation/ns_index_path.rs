@@ -8,9 +8,7 @@
 //! Only the row/section index paths used by `UITableView` are implemented.
 
 use crate::frameworks::foundation::NSUInteger;
-use crate::objc::{
-    id, msg_class, objc_classes, ClassExports, HostObject, NSZonePtr,
-};
+use crate::objc::{id, msg_class, objc_classes, ClassExports, HostObject, NSZonePtr};
 
 #[derive(Default)]
 struct NSIndexPathHostObject {
