@@ -5,9 +5,13 @@
  */
 //! `UIImageView`.
 
+use crate::frameworks::core_graphics::cg_context::{
+    CGContextRestoreGState, CGContextSaveGState, CGContextScaleCTM, CGContextTranslateCTM,
+};
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::frameworks::foundation::NSTimeInterval;
+use crate::frameworks::uikit::ui_graphics::UIGraphicsGetCurrentContext;
 use crate::objc::{
     id, impl_HostObject_with_superclass, msg, msg_super, nil, objc_classes, release, retain,
     todo_objc_setter, ClassExports, NSZonePtr,
@@ -87,7 +91,20 @@ pub const CLASSES: ClassExports = objc_classes! {
         return;
     }
     let bounds: CGRect = msg![env; this bounds];
+    // CGContextDrawImage (via drawInRect:) draws with Core Graphics'
+    // bottom-left origin, but the bitmap that the compositor samples for a
+    // layer's cg_context is filled by put_pixel in top-left (top-to-bottom)
+    // row order, and the compositor compensates with flipped UVs. Drawing the
+    // image unadjusted therefore lands it vertically mirrored (app icons and
+    // wallpapers rendered upside down). Flip the CTM so the image is stored
+    // bottom-to-top, matching the compositor's expectation. This is the same
+    // compensation used by the app picker's generated images.
+    let context = UIGraphicsGetCurrentContext(env);
+    CGContextSaveGState(env, context);
+    CGContextTranslateCTM(env, context, 0.0, bounds.size.height);
+    CGContextScaleCTM(env, context, 1.0, -1.0);
     () = msg![env; image drawInRect:bounds];
+    CGContextRestoreGState(env, context);
 }
 
 - (id)image {
