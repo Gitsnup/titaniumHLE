@@ -75,7 +75,8 @@ pub fn read_app_pref(app_path: &std::path::Path, key: &str) -> Option<String> {
     dict.get(key)?.as_string().map(str::to_owned)
 }
 
-/// Write a single string preference for the app, host-side, into its sandbox —
+/// Write a single string preference for the app, host-side, into its
+/// sandbox —
 /// the same way the system Settings app would. Other keys are preserved; the
 /// app reads the value back through `NSUserDefaults` on its next launch.
 ///
