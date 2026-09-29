@@ -5,12 +5,11 @@
  */
 //! `UIImageView`.
 
-use crate::frameworks::core_graphics::cg_image::CGImageRef;
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::frameworks::foundation::NSTimeInterval;
 use crate::objc::{
-    id, impl_HostObject_with_superclass, msg, msg_super, objc_classes, release, retain,
+    id, impl_HostObject_with_superclass, msg, msg_super, nil, objc_classes, release, retain,
     todo_objc_setter, ClassExports, NSZonePtr,
 };
 
@@ -79,6 +78,18 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+// Draws the image scaled to fill the view's bounds. UIKit's default content
+// mode is `UIViewContentModeScaleToFill`, and the nibs this emulates rely on
+// the image view's frame being the size the image should be drawn at.
+- (())drawRect:(CGRect)_rect {
+    let image = env.objc.borrow::<UIImageViewHostObject>(this).image;
+    if image == nil {
+        return;
+    }
+    let bounds: CGRect = msg![env; this bounds];
+    () = msg![env; image drawInRect:bounds];
+}
+
 - (id)image {
     env.objc.borrow::<UIImageViewHostObject>(this).image
 }
@@ -89,9 +100,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, new_image);
     release(env, old_image);
 
+    // NB: deliberately no `setContents:` on the layer. The compositor uploads a
+    // layer's `contents` directly and SKIPS the bitmap context that
+    // `drawRect:`/`drawInRect:` draws into, so setting it here would make the
+    // image view's own drawing (which handles content mode, bounds and any
+    // clipping) dead code. Drawing through `drawRect:` is the render path.
     let layer: id = msg![env; this layer];
-    let cg_image: CGImageRef = msg![env; new_image CGImage];
-    () = msg![env; layer setContents:cg_image];
+    () = msg![env; layer setNeedsDisplay];
 }
 
 - (())setAnimationImages:(id)images { // NSArray<UIImage *>*

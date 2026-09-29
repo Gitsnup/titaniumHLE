@@ -345,8 +345,9 @@ mod tests {
 
     /// Both JellyCar toggles must survive the encoding round trip, or the
     /// "in-game music" / "in-game sounds" options silently vanish.
-    /// The .ipa layout the real file uses: the app directory entry is namespaced
-    /// by the extraction path, so the `.app` directory must still be found.
+    /// The .ipa layout the real file uses: the app directory entry is
+    /// namespaced by the extraction path, so the `.app` directory must
+    /// still be found.
     #[test]
     fn ipa_app_dir_is_detected_from_an_entry_name() {
         let name = "Payload/JellyCar.app/Settings.bundle/Root.plist";

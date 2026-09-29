@@ -228,6 +228,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 @implementation UIDeviceRGBColor: UIColor
 @end
+// UIKit's private subclass for the cached device-white color. NIBs that store a
+// white color reference this class directly rather than `UIColor`, and it
+// decodes through the inherited `initWithCoder:` like its siblings above.
+@implementation UICachedDeviceWhiteColor: UIColor
+@end
 
 // Special subclass for standard colors with a static lifetime.
 // See `get_standard_color`.

@@ -319,6 +319,21 @@ fn unarchive_key(env: &mut Environment, unarchiver: id, key: Uid) -> id {
             host_obj.current_key = Some(key);
 
             let new_object: id = msg![env; class alloc];
+
+            // Cache the object BEFORE `initWithCoder:`, not after. Nib object
+            // graphs contain back-references (e.g. a UINavigationBar's
+            // `UIItems` array holds a UINavigationItem whose `UINavigationBar`
+            // key points straight back at that bar). `initWithCoder:` decodes
+            // those keys, so the same key is asked for again while its first
+            // decode is still in progress. Without an entry here the cache
+            // misses and this recurses, allocating a fresh object each time
+            // until the stack overflows. Real NSKeyedUnarchiver resolves such
+            // a cycle to the object currently being decoded, so do the same.
+            {
+                let host_obj = borrow_host_obj(env, unarchiver); // reborrow
+                host_obj.already_unarchived[key.get() as usize] = Some(new_object);
+            }
+
             let new_object: id = msg![env; new_object initWithCoder:unarchiver];
 
             let host_obj = borrow_host_obj(env, unarchiver); // reborrow

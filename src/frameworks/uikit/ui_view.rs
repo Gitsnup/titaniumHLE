@@ -12,10 +12,12 @@ pub mod ui_alert_view;
 pub mod ui_control;
 pub mod ui_image_view;
 pub mod ui_label;
+pub mod ui_navigation_bar;
 pub mod ui_page_control;
 pub mod ui_picker_view;
 pub mod ui_scroll_view;
 pub mod ui_table_view;
+pub mod ui_toolbar;
 pub mod ui_web_view;
 pub mod ui_window;
 
@@ -480,7 +482,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())addSubview:(id)view {
-    log_dbg!("[(UIView*){:?} addSubview:{:?}] => ()", this, view);
+    if crate::log::ENABLED_MODULES.contains(&module_path!()) {
+        // NB: get_class_name borrows the class object, so resolve both names
+        // into owned strings before logging. Holding either borrow across the
+        // other lookup panics in the object table.
+        let recv_class: Class = msg![env; this class];
+        let recv_name = env.objc.get_class_name(recv_class).to_owned();
+        let view_class: Class = msg![env; view class];
+        let view_name = env.objc.get_class_name(view_class).to_owned();
+        log_dbg!("[{} {:?} addSubview:{} {:?}]", recv_name, this, view_name, view);
+    }
 
     if view == nil {
         log_dbg!("Tolerating [(UIView*){:?} addSubview:nil]", this);
@@ -503,7 +514,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())insertSubview:(id)view atIndex:(NSInteger)index {
-    assert!(view != nil);
+    if view == nil {
+        log_dbg!("Tolerating [(UIView*){:?} insertSubview:nil atIndex:{}]", this, index);
+        return;
+    }
+    assert!(index >= 0);
     retain(env, view);
     () = msg![env; view removeFromSuperview];
 
@@ -524,6 +539,22 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())insertSubview:(id)view belowSubview:(id)sibling {
+    if view == nil {
+        log_dbg!("Tolerating [(UIView*){:?} insertSubview:nil belowSubview:]", this);
+        return;
+    }
+    if sibling == nil {
+        // Inserting below a nil sibling is meaningless. Be lenient and treat
+        // it like a plain append, rather than crashing the emulator.
+        log_dbg!(
+            "Tolerating [(UIView*){:?} insertSubview:{:?} belowSubview:nil], appending instead",
+            this,
+            view
+        );
+        () = msg![env; this addSubview:view];
+        return;
+    }
+
     retain(env, view);
     () = msg![env; view removeFromSuperview];
 

@@ -11,7 +11,7 @@
 use crate::frameworks::core_graphics::CGRect;
 use crate::frameworks::foundation::ns_objc_runtime::NSStringFromClass;
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
-use crate::frameworks::foundation::NSInteger;
+use crate::frameworks::foundation::{NSInteger, NSUInteger};
 use crate::frameworks::uikit::ui_application::{
     UIInterfaceOrientation, UIInterfaceOrientationPortrait,
 };
@@ -23,6 +23,42 @@ use crate::objc::{
 use crate::Environment;
 
 pub mod ui_navigation_controller;
+
+/// Calls `setNeedsDisplay` on `view` and all of its subviews.
+///
+/// `UIView setNeedsDisplay` is a no-op for views that don't draw their own
+/// content, so this is safe to call on a whole tree.
+fn mark_view_tree_for_display(env: &mut Environment, view: id) {
+    if view == nil {
+        return;
+    }
+    () = msg![env; view setNeedsDisplay];
+    let subviews: id = msg![env; view subviews];
+    let count: NSUInteger = msg![env; subviews count];
+    for i in 0..count {
+        let subview: id = msg![env; subviews objectAtIndex:i];
+        mark_view_tree_for_display(env, subview);
+    }
+}
+
+/// Sends `viewDidLoad` to `view_controller` if it hasn't been sent yet.
+///
+/// UIKit sends `viewDidLoad` exactly once, the first time the root view
+/// becomes available. In touchHLE the view can arrive two ways: lazily via
+/// `loadView`, or directly from the nib loader. Both paths must end up here.
+fn send_view_did_load_if_needed(env: &mut Environment, view_controller: id) {
+    if env
+        .objc
+        .borrow::<UIViewControllerHostObject>(view_controller)
+        .did_load_view
+    {
+        return;
+    }
+    env.objc
+        .borrow_mut::<UIViewControllerHostObject>(view_controller)
+        .did_load_view = true;
+    () = msg![env; view_controller viewDidLoad];
+}
 
 #[derive(Default)]
 struct UIViewControllerHostObject {
@@ -37,6 +73,16 @@ struct UIViewControllerHostObject {
     /// of the nib by name, may be nil.
     /// `NSBundle*`
     bundle: id,
+    /// Whether `viewDidLoad` has already been sent to this view controller.
+    /// UIKit sends it exactly once, after the root view becomes available,
+    /// whether that happened via `loadView` or by the nib loader assigning
+    /// the view directly.
+    did_load_view: bool,
+    /// The controller's bar item, created on first use by `navigationItem`.
+    /// A navigation controller pushes this onto its bar, so setting a title on
+    /// the item (which `title` does) is how a controller's title appears.
+    /// `UINavigationItem*`
+    navigation_item: id,
 }
 impl HostObject for UIViewControllerHostObject {}
 
@@ -77,7 +123,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())dealloc {
-    let &UIViewControllerHostObject { view, nib_name, bundle } = env.objc.borrow(this);
+    let &UIViewControllerHostObject {
+        view,
+        nib_name,
+        bundle,
+        navigation_item,
+        ..
+    } = env.objc.borrow(this);
 
     if view != nil {
         set_view_controller(env, view, nil);
@@ -85,6 +137,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     release(env, view);
     release(env, nib_name);
     release(env, bundle);
+    release(env, navigation_item);
 
     env.objc.dealloc_object(this, &mut env.mem);
 }
@@ -142,6 +195,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     if new_view != nil {
         set_view_controller(env, new_view, this);
+        // The nib loader assigns the view directly rather than going through
+        // `loadView`, so `viewDidLoad` must be sent here too. Without this,
+        // any view controller whose root view comes from a nib never receives
+        // `viewDidLoad` and never gets to set up its content.
+        send_view_did_load_if_needed(env, this);
     }
     retain(env, new_view);
     release(env, old_view);
@@ -151,7 +209,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if view == nil {
         () = msg![env; this loadView];
         let view = env.objc.borrow_mut::<UIViewControllerHostObject>(this).view;
-        () = msg![env; this viewDidLoad];
+        send_view_did_load_if_needed(env, this);
         view
     } else {
         view
@@ -167,6 +225,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (())viewDidAppear:(bool)animated {
     log_dbg!("[(UIViewController*){:?} viewDidAppear:{}]", this, animated);
+    // UIKit marks the view hierarchy as needing display when it appears, which
+    // is what triggers the first drawRect:. Without this, views that draw their
+    // content in drawRect: (rather than via images or an EAGL layer) never get
+    // drawn at all, and the screen stays blank.
+    let view: id = msg![env; this view];
+    mark_view_tree_for_display(env, view);
 }
 - (())viewWillDisappear:(bool)animated {
     log_dbg!("[(UIViewController*){:?} viewWillDisappear:{}]", this, animated);
@@ -175,8 +239,39 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("[(UIViewController*){:?} viewDidDisappear:{}]", this, animated);
 }
 
+- (id)title {
+    let item = env.objc.borrow::<UIViewControllerHostObject>(this).navigation_item;
+    if item == nil {
+        return nil;
+    }
+    msg![env; item title]
+}
 - (())setTitle:(id)title { // NSString *
-    todo_objc_setter!(this, to_rust_string(env, title));
+    // UIKit stores the title on the controller's navigation item, so that the
+    // bar it is pushed onto shows it without the controller having to know
+    // which bar that is.
+    let item: id = msg![env; this navigationItem];
+    () = msg![env; item setTitle:title];
+}
+
+- (id)navigationItem {
+    let existing = env.objc.borrow::<UIViewControllerHostObject>(this).navigation_item;
+    if existing != nil {
+        return existing;
+    }
+    let item: id = msg_class![env; UINavigationItem alloc];
+    let item: id = msg![env; item init];
+    retain(env, item);
+    env.objc.borrow_mut::<UIViewControllerHostObject>(this).navigation_item = item;
+    item
+}
+- (())setNavigationItem:(id)item { // UINavigationItem *
+    let old = std::mem::replace(
+        &mut env.objc.borrow_mut::<UIViewControllerHostObject>(this).navigation_item,
+        item,
+    );
+    retain(env, item);
+    release(env, old);
 }
 - (())setEditing:(bool)editing {
     todo_objc_setter!(this, editing);

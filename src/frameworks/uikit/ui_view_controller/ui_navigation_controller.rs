@@ -5,13 +5,15 @@
  */
 //! `UINavigationController`.
 
+use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::{ns_array, NSUInteger};
 use crate::objc::{
-    autorelease, id, impl_HostObject_with_superclass, msg, nil, objc_classes, release, retain,
-    ClassExports, NSZonePtr, SEL,
+    autorelease, id, impl_HostObject_with_superclass, msg, msg_class, nil, objc_classes, release,
+    retain, ClassExports, NSZonePtr, SEL,
 };
+use crate::Environment;
 
-// TODO: navigation bar and toolbar
+// TODO: the optional toolbar along the bottom
 // TODO: animations
 
 #[derive(Default)]
@@ -22,8 +24,56 @@ struct UINavigationControllerHostObject {
     /// Navigation stack of view controllers, non-retaining
     /// (we explicitly retain/release on push/pop messages)
     navigation_stack: Vec<id>,
+    /// The bar at the top of this controller's view. Retained while the
+    /// controller is alive, even when hidden.
+    /// `UINavigationBar*`
+    navigation_bar: id,
+    /// Whether the bar is hidden. A hidden bar has no superview, so it takes
+    /// no room at the top of the controller's view.
+    navigation_bar_hidden: bool,
 }
 impl_HostObject_with_superclass!(UINavigationControllerHostObject);
+
+/// Height of the navigation bar, excluding the status bar.
+const NAVIGATION_BAR_HEIGHT: CGFloat = 44.0;
+
+/// Adds the controller's bar to its view if it should be visible.
+///
+/// The bar sits above the content view controller's view, so it is inserted
+/// at the front of the subview list. The content view is not shrunk to make
+/// room for it, matching what this emulator does for the status bar.
+fn add_navigation_bar_to_view(env: &mut Environment, this: id) {
+    if env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar_hidden {
+        return;
+    }
+    let bar = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar;
+    if bar == nil {
+        return;
+    }
+    let self_view: id = msg![env; this view];
+    if self_view == nil {
+        return;
+    }
+    let view_bounds: CGRect = msg![env; self_view bounds];
+    () = msg![env; bar setFrame:(CGRect {
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: CGSize { width: view_bounds.size.width, height: NAVIGATION_BAR_HEIGHT },
+    })];
+    () = msg![env; self_view addSubview:bar];
+}
+
+/// Pushes `view_controller`'s navigation item onto the controller's bar, if
+/// there is a bar. This is what makes a pushed controller's `title` appear.
+fn show_navigation_item_for(env: &mut Environment, this: id, view_controller: id) {
+    let bar = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar;
+    if bar == nil {
+        return;
+    }
+    let item: id = msg![env; view_controller navigationItem];
+    if item != nil {
+        () = msg![env; bar pushNavigationItem:item animated:false];
+    }
+}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -74,6 +124,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO: animations
     () = msg![env; view_controller viewWillAppear:false];
     () = msg![env; self_view addSubview:vc_view];
+    show_navigation_item_for(env, this, view_controller);
     () = msg![env; view_controller viewDidAppear:false];
     let sel: SEL = env
         .objc
@@ -142,12 +193,53 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg![env; this pushViewController:last_vc animated:animated];
 }
 
+// Creates the bar on first use and returns it. The bar belongs to the
+// controller's view: it is added as a subview and takes the full width of the
+// top of that view.
 - (id)navigationBar {
-    // TODO
-    nil
+    let existing = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar;
+    if existing != nil {
+        return existing;
+    }
+
+    let bar: id = msg_class![env; UINavigationBar alloc];
+    let bar: id = msg![env; bar init];
+    retain(env, bar);
+    env.objc.borrow_mut::<UINavigationControllerHostObject>(this).navigation_bar = bar;
+
+    // The bar mirrors the top of the stack: a view controller's own
+    // navigationItem (which is what its title and bar button items are set on)
+    // is pushed whenever that controller is shown.
+    if let Some(top_vc) = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_stack.last().copied() {
+        let item: id = msg![env; top_vc navigationItem];
+        if item != nil {
+            () = msg![env; bar pushNavigationItem:item animated:false];
+        }
+    }
+
+    add_navigation_bar_to_view(env, this);
+    bar
 }
-- (())setNavigationBarHidden:(bool)_hidden {
-    // TODO
+
+- (())setNavigationBarHidden:(bool)hidden {
+    msg![env; this setNavigationBarHidden:hidden animated:false]
+}
+
+- (())setNavigationBarHidden:(bool)hidden animated:(bool)_animated {
+    env.objc.borrow_mut::<UINavigationControllerHostObject>(this).navigation_bar_hidden = hidden;
+    let bar = env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar;
+    if bar == nil {
+        return;
+    }
+    if hidden {
+        () = msg![env; bar removeFromSuperview];
+    } else {
+        add_navigation_bar_to_view(env, this);
+    }
+}
+
+- (bool)isNavigationBarHidden {
+    env.objc.borrow::<UINavigationControllerHostObject>(this).navigation_bar_hidden
 }
 
 @end
