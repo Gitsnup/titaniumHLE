@@ -29,7 +29,7 @@ jobs:
       DEPS: ${{ github.workspace }}/linker-deps
       FAKELD: ${{ github.workspace }}/fakeld
       LD_LIBRARY_PATH: ${{ github.workspace }}/linker-deps/lib
-      TOUCHHLE_TEST_FUSE_LD: ${{ github.workspace }}/fakeld/ld
+      TOUCHHLE_TEST_FUSE_LD: ${{ github.workspace }}/cctools-port/cctools-inst/bin/arm-apple-darwin11-ld
 
     steps:
       # actions/checkout really doesn't work well with git-describe for some
@@ -99,10 +99,12 @@ jobs:
           ./configure --prefix="$PWD/../cctools-inst" --target=arm-apple-darwin11 \
             LDFLAGS="-L$DEPS/lib" CPPFLAGS="-I$DEPS/include"
           make -j4 && make install
-          # Expose the linker as `ld` and lipo for clang, driven via -fuse-ld=
-          # (TOUCHHLE_TEST_FUSE_LD) and PATH respectively.
+          # Only lipo goes on the PATH (clang execs it for fat binaries).
+          # Deliberately NOT `ld`: the host builds (SDL2, dynarmic) must keep
+          # using the system GNU ld. The Apple linker is only ever selected
+          # via -fuse-ld= (TOUCHHLE_TEST_FUSE_LD), which only the integration
+          # test sets.
           mkdir -p "$FAKELD"
-          ln -s "$PWD/../cctools-inst/bin/arm-apple-darwin11-ld" "$FAKELD/ld"
           ln -s "$PWD/../cctools-inst/bin/arm-apple-darwin11-lipo" "$FAKELD/lipo"
       # lint.sh runs: comment-length check, `cargo clippy -- --deny warnings`,
       # and `cargo doc` with --deny-warnings rustdocflags.
