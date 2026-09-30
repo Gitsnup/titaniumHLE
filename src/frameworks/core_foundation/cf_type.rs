@@ -22,6 +22,14 @@ pub fn CFRelease(env: &mut Environment, object: CFTypeRef) {
     objc::release(env, object);
 }
 
+/// Legacy garbage-collection-era function. With the GC long gone this is
+/// equivalent to `CFRetain` (which is how modern CoreFoundation implements
+/// it), but guests only ever used it to satisfy an API, so returning the
+/// object itself is also fine.
+pub fn _CFMakeCollectable(env: &mut Environment, object: CFTypeRef) -> CFTypeRef {
+    CFRetain(env, object)
+}
+
 pub fn CFGetRetainCount(env: &mut Environment, object: CFTypeRef) -> CFIndex {
     let count: NSUInteger = msg![env; object retainCount];
     count as CFIndex
@@ -48,6 +56,7 @@ pub fn CFHash(env: &mut Environment, object: CFTypeRef) -> CFHashCode {
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFRetain(_)),
     export_c_func!(CFRelease(_)),
+    export_c_func!(_CFMakeCollectable(_)),
     export_c_func!(CFGetRetainCount(_)),
     export_c_func!(CFEqual(_, _)),
     export_c_func!(CFHash(_)),

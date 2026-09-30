@@ -16,11 +16,11 @@ use crate::frameworks::core_foundation::cf_string::{
     CFStringRef,
 };
 use crate::frameworks::foundation::ns_string::{
-    get_static_str, to_rust_string, NSUTF8StringEncoding,
+    from_rust_string, get_static_str, to_rust_string, NSUTF8StringEncoding,
 };
 use crate::frameworks::foundation::NSUInteger;
 use crate::mem::{ConstPtr, MutPtr, Ptr};
-use crate::objc::{id, msg, msg_class, release};
+use crate::objc::{id, msg, msg_class, nil, release};
 use crate::Environment;
 
 pub type CFURLRef = super::CFTypeRef;
@@ -141,6 +141,55 @@ pub fn CFURLCopyPathExtension(env: &mut Environment, url: CFURLRef) -> CFStringR
     msg![env; ext copy]
 }
 
+/// Escape a string for inclusion in a URL. Everything that is not an ASCII
+/// alphanumeric (or a character in `characters_to_leave_unescaped`) is
+/// percent-escaped; characters in `legal_url_characters_to_be_escaped` are
+/// escaped even if they would otherwise be left alone. Returns nil for a nil
+/// input, like the real function.
+pub fn CFURLCreateStringByAddingPercentEscapes(
+    env: &mut Environment,
+    _allocator: CFAllocatorRef,
+    original_string: CFStringRef,
+    characters_to_leave_unescaped: CFStringRef,
+    legal_url_characters_to_be_escaped: CFStringRef,
+    _encoding: CFStringEncoding,
+) -> CFStringRef {
+    if original_string == nil {
+        return nil;
+    }
+    let original = to_rust_string(env, original_string);
+    let leave_unescaped: Vec<char> = if characters_to_leave_unescaped == nil {
+        Vec::new()
+    } else {
+        to_rust_string(env, characters_to_leave_unescaped)
+            .chars()
+            .collect()
+    };
+    let must_escape: Vec<char> = if legal_url_characters_to_be_escaped == nil {
+        Vec::new()
+    } else {
+        to_rust_string(env, legal_url_characters_to_be_escaped)
+            .chars()
+            .collect()
+    };
+
+    let mut escaped = String::new();
+    for c in original.chars() {
+        // TODO: non-ASCII characters should be encoded per `encoding`, which
+        // is not always UTF-8.
+        if (c.is_ascii_alphanumeric() || leave_unescaped.contains(&c)) && !must_escape.contains(&c)
+        {
+            escaped.push(c);
+        } else {
+            let mut buf = [0u8; 4];
+            for byte in c.encode_utf8(&mut buf).as_bytes() {
+                escaped.push_str(&format!("%{byte:02X}"));
+            }
+        }
+    }
+    from_rust_string(env, escaped)
+}
+
 fn CFURLCopyFileSystemPath(
     env: &mut Environment,
     url: CFURLRef,
@@ -205,4 +254,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFURLCreateCopyAppendingPathComponent(_, _, _, _)),
     export_c_func!(CFURLCreateCopyDeletingLastPathComponent(_, _)),
     export_c_func!(CFURLHasDirectoryPath(_)),
+    export_c_func!(CFURLCreateStringByAddingPercentEscapes(_, _, _, _, _)),
 ];
