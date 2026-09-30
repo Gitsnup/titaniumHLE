@@ -99,13 +99,18 @@ jobs:
           ./configure --prefix="$PWD/../cctools-inst" --target=arm-apple-darwin11 \
             LDFLAGS="-L$DEPS/lib" CPPFLAGS="-I$DEPS/include"
           make -j4 && make install
-          # Only lipo goes on the PATH (clang execs it for fat binaries).
-          # Deliberately NOT `ld`: the host builds (SDL2, dynarmic) must keep
-          # using the system GNU ld. The Apple linker is only ever selected
-          # via -fuse-ld= (TOUCHHLE_TEST_FUSE_LD), which only the integration
-          # test sets.
+          # Staged for the SDK tool swap below (ld + lipo).
           mkdir -p "$FAKELD"
+          ln -s "$PWD/../cctools-inst/bin/arm-apple-darwin11-ld" "$FAKELD/ld"
           ln -s "$PWD/../cctools-inst/bin/arm-apple-darwin11-lipo" "$FAKELD/lipo"
+      # The SDK ships `ld` and `lipo` as Mach-O binaries, which clang finds
+      # via the -B flag before it searches the PATH — and they cannot execute
+      # on Linux. Replace them with the working Linux builds from cctools.
+      - name: Swap the SDK's dead Mach-O tools for Linux ones
+        run: |
+          rm -f tests/common-3.0.sdk/usr/bin/ld tests/common-3.0.sdk/usr/bin/lipo
+          ln -s "$FAKELD/ld" tests/common-3.0.sdk/usr/bin/ld
+          ln -s "$FAKELD/lipo" tests/common-3.0.sdk/usr/bin/lipo
       # lint.sh runs: comment-length check, `cargo clippy -- --deny warnings`,
       # and `cargo doc` with --deny-warnings rustdocflags.
       - name: Lint
@@ -114,7 +119,6 @@ jobs:
         run: |
           # No sound card on the runner; force OpenAL's null driver.
           printf '[general]\ndrivers = null\n' > alsoft.ini
-          export PATH="$FAKELD:$PATH"
           cargo test
         env:
           ALSOFT_CONF: ${{ github.workspace }}/alsoft.ini
