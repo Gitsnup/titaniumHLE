@@ -644,6 +644,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     all_keys_common(env, this)
 }
 
+- (id)keyEnumerator { // NSEnumerator*
+    let keys_arr: id = msg![env; this allKeys];
+    msg![env; keys_arr objectEnumerator]
+}
+
 // NSFastEnumeration implementation
 - (NSUInteger)countByEnumeratingWithState:(MutPtr<NSFastEnumerationState>)state
                                   objects:(MutPtr<id>)stackbuf

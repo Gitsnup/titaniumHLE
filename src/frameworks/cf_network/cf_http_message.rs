@@ -95,21 +95,15 @@ fn CFReadStreamSetProperty(
 }
 fn CFReadStreamSetClient(
     _env: &mut Environment,
-    stream: CFReadStreamRef,
-    stream_events: CFOptionFlags,
-    client_callback: GuestFunction, // TODO: CFReadStreamClientCallBack
-    client_context: MutVoidPtr,     // TODO: CFStreamClientContext *
+    _stream: CFReadStreamRef,
+    _stream_events: CFOptionFlags,
+    _client_callback: GuestFunction, // TODO: CFReadStreamClientCallBack
+    _client_context: MutVoidPtr,     // TODO: CFStreamClientContext *
 ) -> bool {
-    if !stream.is_null() {
-        todo!(
-            "CFReadStreamSetClient({:?}, {}, {:?}, {:?})",
-            stream,
-            stream_events,
-            client_callback,
-            client_context
-        );
-    }
-    false
+    // The client callback is accepted but never invoked: no stream events
+    // will ever fire since the stream can never open.
+    log!("TODO: CFReadStreamSetClient -> true (no networking)");
+    true
 }
 
 const kCFHTTPVersion1_0: &str = "kCFHTTPVersion1_0";

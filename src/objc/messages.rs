@@ -192,7 +192,19 @@ fn objc_msgSend_inner(
     }
 
     let orig_class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
-    assert!(orig_class != nil);
+    if orig_class == nil {
+        // The receiver is non-nil but has no class: a dangling reference,
+        // e.g. to a host object the app already released. Real Objective-C
+        // messaging such an object is undefined behaviour; often it happens
+        // to "work" on device. Treat it like a message to nil rather than
+        // crashing the app.
+        log!(
+            "warning: message to object {:?} with nil class; treating as nil",
+            receiver
+        );
+        env.cpu.regs_mut()[0..2].fill(0);
+        return;
+    }
     if !skip_initialize {
         maybe_initialize_class(env, receiver);
     }

@@ -256,6 +256,41 @@ pub const CLASSES: ClassExports = objc_classes! {
     true
 }
 
+- (bool)scanLongLong:(MutPtr<i64>)result {
+    skip_characters(env, this);
+
+    let NSScannerHostObject { to_be_skipped, string, len, pos } = std::mem::take(env.objc.borrow_mut::<NSScannerHostObject>(this));
+    let left: id = msg![env; string substringFromIndex:pos];
+    if left == nil {
+        *env.objc.borrow_mut::<NSScannerHostObject>(this) = NSScannerHostObject { to_be_skipped, string, len, pos };
+        return false;
+    }
+
+    let st = to_rust_string(env, left);
+    let mut cutoff = st.len();
+    for (i, c) in st.char_indices() {
+        if !c.is_ascii_digit() && c != '+' && c != '-' {
+            cutoff = i;
+            break;
+        }
+    }
+    if cutoff == 0 {
+        log_dbg!("scanLongLong: no valid long long found for '{}'", st);
+        *env.objc.borrow_mut::<NSScannerHostObject>(this) = NSScannerHostObject { to_be_skipped, string, len, pos };
+        return false;
+    }
+
+    if !result.is_null() {
+        // TODO: handle over/underflow properly
+        let res = st[..cutoff].parse().unwrap_or(0);
+        log_dbg!("scanLongLong: from '{}' -> {}", st, res);
+        env.mem.write(result, res);
+    }
+
+    *env.objc.borrow_mut::<NSScannerHostObject>(this) = NSScannerHostObject { to_be_skipped, string, len, pos: pos + cutoff as NSUInteger };
+    true
+}
+
 @end
 
 };

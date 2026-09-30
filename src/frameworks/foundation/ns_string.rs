@@ -1640,6 +1640,60 @@ pub const CLASSES: ClassExports = objc_classes! {
     *env.objc.borrow_mut(this) = host_object;
 }
 
+- (NSUInteger)replaceOccurrencesOfString:(id)target // NSString*
+                              withString:(id)replacement // NSString*
+                                 options:(NSUInteger)options
+                                   range:(NSRange)search_range {
+    assert_ne!(target, nil);
+    assert_ne!(replacement, nil);
+    // TODO: other compare options (e.g. regular-expression search)
+    assert!(options & !(NSLiteralSearch | NSCaseInsensitiveSearch) == 0);
+    // TODO: NSRange is in UTF-16 units, this operates on bytes; identical for
+    // ASCII, which is all real-world callers use here.
+    let search_start = search_range.location as usize;
+    let search_end = (search_range.location + search_range.length) as usize;
+    let hay = to_rust_string(env, this);
+    let target = to_rust_string(env, target);
+    let replacement = to_rust_string(env, replacement);
+    // Case-insensitive matching is done on lowercased copies; this assumes
+    // lowercasing does not change byte lengths (true for ASCII).
+    let case_insensitive = options & NSCaseInsensitiveSearch != 0;
+    let hay_cmp: std::borrow::Cow<str> = if case_insensitive {
+        std::borrow::Cow::Owned(hay.to_lowercase())
+    } else {
+        std::borrow::Cow::Borrowed(&hay)
+    };
+    let target_cmp: std::borrow::Cow<str> = if case_insensitive {
+        std::borrow::Cow::Owned(target.to_lowercase())
+    } else {
+        std::borrow::Cow::Borrowed(&target)
+    };
+
+    let mut result = String::with_capacity(hay.len());
+    let mut i = 0usize;
+    let mut count: NSUInteger = 0;
+    while i < hay.len() {
+        // A match counts if it starts within the search range; the
+        // replacement text is never rescanned.
+        if i >= search_start && i < search_end && hay_cmp[i..].starts_with(&*target_cmp) {
+            result.push_str(&replacement);
+            i += target.len();
+            count += 1;
+        } else {
+            let mut next = i + 1;
+            while next < hay.len() && !hay.is_char_boundary(next) {
+                next += 1;
+            }
+            result.push_str(&hay[i..next]);
+            i = next;
+        }
+    }
+    if count > 0 {
+        *env.objc.borrow_mut(this) = StringHostObject::Utf8(result.into());
+    }
+    count
+}
+
 - (id)substringWithRange:(NSRange)range {
     let host_object = env.objc.borrow_mut::<StringHostObject>(this);
     let (orig_string, did_convert) = host_object.convert_to_utf16_inplace();
