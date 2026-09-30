@@ -61,8 +61,12 @@ jobs:
           rustup update stable
           rustup default stable
           rustup target add x86_64-unknown-linux-gnu
+      # The integration test links the TestApp with the `ld` from the iOS SDK
+      # (via clang -B), which is a Mach-O binary and can only execute on
+      # macOS. So on Linux we only run the unit tests, which don't compile
+      # iPhone OS executables.
       - name: Test
-        run: cargo test --target x86_64-unknown-linux-gnu
+        run: cargo test --lib --bins --target x86_64-unknown-linux-gnu
       - name: Build
         run: cargo build --target x86_64-unknown-linux-gnu --release
       - name: Package binary
