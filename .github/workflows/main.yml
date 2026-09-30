@@ -1,0 +1,52 @@
+name: Lint and Check (Main)
+
+# Fast gate that runs the lint suite (rustfmt checks, clippy, rustdoc) on a
+# cheap Linux runner, in parallel with and ahead of the per-platform build
+# workflows. Platform builds no longer lint: this catches style/clippy
+# regressions before compilation is worth doing.
+
+on:
+  push:
+    branches: [ "trunk" ]
+  pull_request:
+    branches: [ "trunk" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+
+    steps:
+      # actions/checkout really doesn't work well with git-describe for some
+      # reason (most likely it strips the annotation off the tag somehow).
+      - name: Checkout TitaniumHLE
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE"
+          git clone https://github.com/gitsnup/titaniumHLE "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git fetch origin "$GITHUB_REF"
+          git checkout "$GITHUB_SHA" # avoid race condition if branch/tag changes
+      - name: Get Submodules
+        run: git submodule update --init
+      # Clippy builds the full dependency tree (including bundled SDL2, which
+      # needs X11/ALSA headers, and dynarmic, which needs Boost and cmake), so
+      # these must be installed even though we never link or run anything.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake pkg-config libboost-all-dev \
+            libasound2-dev \
+            libx11-dev libxext-dev libxrandr-dev libxrender-dev \
+            libxfixes-dev libxi-dev libxss-dev libxcursor-dev \
+            libxkbcommon-dev
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup default stable
+      # lint.sh runs: comment-length check, `cargo clippy -- --deny warnings`,
+      # and `cargo doc` with --deny-warnings rustdocflags.
+      - name: Lint
+        run: dev-scripts/lint.sh

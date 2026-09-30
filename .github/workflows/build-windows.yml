@@ -52,14 +52,8 @@ jobs:
     - if: ${{ steps.cache-cmake.outputs.cache-hit != 'true' }}
       name: Extract Cmake
       run: 7z -ovendor x "cmake-3.31.6-windows-x86_64.zip" && ren vendor\cmake-3.31.6-windows-x86_64 cmake
-    # This is the earliest point at which we can do linting: clippy will end up
-    # building dynarmic, which needs Boost, but we don't need LLVM until
-    # building tests.
-    - name: Lint
-      shell: bash # no command output without this
-      run: dev-scripts/lint.sh
-      env:
-        CMAKE: ${{ github.workspace }}\vendor\cmake\bin\cmake
+    # Linting happens in the "Lint and Check (Main)" workflow, which runs in
+    # parallel with the platform builds.
     - name: Try to get cached copy of LLVM
       id: cache-llvm
       uses: actions/cache@v3

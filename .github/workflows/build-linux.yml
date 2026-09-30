@@ -1,0 +1,70 @@
+name: Build TitaniumHLE (Linux)
+
+on:
+  push:
+    branches: [ "trunk" ]
+  pull_request:
+    branches: [ "trunk" ]
+  create: # for tags
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+
+    steps:
+      # actions/checkout really doesn't work well with git-describe for some
+      # reason (most likely it strips the annotation off the tag somehow).
+      - name: Checkout TitaniumHLE
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE"
+          git clone https://github.com/gitsnup/titaniumHLE "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git fetch origin "$GITHUB_REF"
+          git checkout "$GITHUB_SHA" # avoid race condition if branch/tag changes
+      - name: Get Submodules
+        run: git submodule update --init
+      # Needed for the bundled SDL2 (X11, ALSA), dynarmic (Boost, cmake) and
+      # openal-soft.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake pkg-config libboost-all-dev \
+            libasound2-dev \
+            libx11-dev libxext-dev libxrandr-dev libxrender-dev \
+            libxfixes-dev libxi-dev libxss-dev libxcursor-dev \
+            libxkbcommon-dev
+      - name: Try to get cached copy of LLVM
+        id: cache-llvm
+        uses: actions/cache@v3
+        with:
+          path: tests/llvm
+          key: llvm_12_0_0_Linux_x64
+      - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
+        name: Download LLVM
+        run: curl -L -O "https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz"
+      - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
+        name: Extract LLVM
+        run: tar -xf clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz && mkdir tests/llvm && mv clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-16.04/* tests/llvm
+      - name: Get copy of common-3.0-sdk
+        run: cd ${{ github.workspace }}/tests && curl -L https://github.com/touchHLE/common-3.0-sdk/releases/latest/download/common-3.0.sdk-macOS-universal.tar.gz | tar xzv
+      - name: Install x86_64 toolchain
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add x86_64-unknown-linux-gnu
+      - name: Test
+        run: cargo test --target x86_64-unknown-linux-gnu
+      - name: Build
+        run: cargo build --target x86_64-unknown-linux-gnu --release
+      - name: Package binary
+        run: |
+          cd target/x86_64-unknown-linux-gnu/release
+          tar czvf ../../../touchHLE_x86_64-unknown-linux-gnu.tar.gz touchHLE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: touchHLE_Linux_x86_64
+          path: touchHLE_x86_64-unknown-linux-gnu.tar.gz

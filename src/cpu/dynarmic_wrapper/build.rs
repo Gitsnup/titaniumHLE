@@ -63,6 +63,12 @@ fn main() {
         build.define("CMAKE_SYSTEM_VERSION", "21");
         build.define("ANDROID", "ON");
     }
+    // When cross-compiling for Haiku, CMake needs to be told what it is
+    // building for, otherwise it probes the host system (Linux) and picks up
+    // host libraries and flags.
+    if os.eq_ignore_ascii_case("haiku") {
+        build.define("CMAKE_SYSTEM_NAME", "Haiku");
+    }
     // dynarmic can't be dynamically linked
     let dynarmic_out = build.build();
 

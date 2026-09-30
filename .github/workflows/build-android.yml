@@ -87,14 +87,8 @@ jobs:
     # Why isn't there a command for this?
     - name: Generate local.properties file
       run: echo 'sdk.dir='$ANDROID_SDK_ROOT > android/local.properties
-    - name: Lint
-      run: dev-scripts/lint.sh ndk -t arm64-v8a
-      env:
-        # The version should match the ndkVersion defined in `android\app\build.gradle`
-        ANDROID_NDK_ROOT: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
-        ANDROID_NDK: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
-        ANDROID_NDK_HOME: '/usr/local/lib/android/sdk/ndk/25.2.9519653'
-        CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake
+    # Linting happens in the "Lint and Check (Main)" workflow, which runs in
+    # parallel with the platform builds.
     # Don't attempt to run tests (can't run on Android).
     # The release APK is signed with the committed, non-changing keystore; the
     # debug APK is signed with the usual Android debug key.

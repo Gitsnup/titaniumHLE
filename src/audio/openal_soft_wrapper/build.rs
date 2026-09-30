@@ -53,6 +53,12 @@ fn main() {
         // vendor/openal-soft/common/threads.h, breaking the build.
         build.define("ALSOFT_BACKEND_SNDIO", "OFF");
 
+        // When cross-compiling for Haiku, CMake needs to be told what it is
+        // building for, otherwise it probes the host system (Linux).
+        if os.eq_ignore_ascii_case("haiku") {
+            build.define("CMAKE_SYSTEM_NAME", "Haiku");
+        }
+
         let openal_soft_out = build.build();
 
         link_search(&openal_soft_out.join("lib"));

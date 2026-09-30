@@ -1,0 +1,104 @@
+name: Build TitaniumHLE (Haiku)
+
+# EXPERIMENTAL. There are no Haiku runners on GitHub Actions, so this
+# cross-compiles for x86_64-unknown-haiku from a Linux runner, using the Haiku
+# cross-compiler toolchain (bundled in the haiku/cross-compiler Docker image,
+# which provides x86_64-unknown-haiku-gcc/g++ and a Haiku sysroot).
+#
+# Known risks (why this job is continue-on-error):
+# * dynarmic has no Haiku-specific exception handler; its POSIX handler may or
+#   may not build/run on Haiku.
+# * The vendored SDL2 has a Haiku video backend, but the bundled cross-build
+#   has never been exercised in CI.
+# * The haiku/cross-compiler image is not rebuilt often; if it is ever
+#   unavailable or broken, the toolchain should be built from
+#   git.haiku-os.org/buildtools instead.
+
+on:
+  push:
+    branches: [ "trunk" ]
+  pull_request:
+    branches: [ "trunk" ]
+  create: # for tags
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  HAIKU_TARGET: x86_64-unknown-haiku
+
+jobs:
+  build-haiku:
+    runs-on: ubuntu-24.04
+    continue-on-error: true # experimental, see notes above
+
+    container:
+      image: haiku/cross-compiler:x86_64
+
+    env:
+      CC_x86_64_unknown_haiku: x86_64-unknown-haiku-gcc
+      CXX_x86_64_unknown_haiku: x86_64-unknown-haiku-g++
+      AR_x86_64_unknown_haiku: x86_64-unknown-haiku-ar
+      CARGO_TARGET_X86_64_UNKNOWN_HAIKU_LINKER: x86_64-unknown-haiku-gcc
+
+    steps:
+      # actions/checkout really doesn't work well with git-describe for some
+      # reason (most likely it strips the annotation off the tag somehow).
+      - name: Checkout TitaniumHLE
+        shell: bash
+        run: |
+          # The toolchain image may not ship git; install what we can.
+          command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq git curl ca-certificates)
+          mkdir -p "$GITHUB_WORKSPACE"
+          git clone https://github.com/gitsnup/titaniumHLE "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git fetch origin "$GITHUB_REF"
+          git checkout "$GITHUB_SHA" # avoid race condition if branch/tag changes
+      - name: Get Submodules
+        shell: bash
+        run: git submodule update --init
+      - name: Install Rust toolchain with Haiku target
+        shell: bash
+        run: |
+          command -v rustup >/dev/null || curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          source "$HOME/.cargo/env"
+          rustup target add "$HAIKU_TARGET"
+      # Boost headers are platform-independent, so the same header pack works
+      # for the Haiku cross-build as for the Android build.
+      - name: Get Boost headers
+        shell: bash
+        run: |
+          mkdir -p vendor/boost
+          curl -L -o boost_1_81_0.tar.gz "https://archives.boost.io/release/1.81.0/source/boost_1_81_0.tar.gz"
+          tar xzf boost_1_81_0.tar.gz -C vendor
+          mv vendor/boost_1_81_0 vendor/boost
+      # CMake toolchain file so cmake-rs-based builds (sdl2-sys via
+      # SDL2_TOOLCHAIN, plus the cc/cmake crates) cross-compile correctly.
+      - name: Write Haiku CMake toolchain file
+        shell: bash
+        run: |
+          SYSROOT="$(dirname "$(command -v x86_64-unknown-haiku-gcc)")/../x86_64-unknown-haiku/sysroot"
+          if [ ! -d "$SYSROOT" ]; then
+            SYSROOT="$(dirname "$(command -v x86_64-unknown-haiku-gcc)")/../sysroot"
+          fi
+          cat > haiku-toolchain.cmake <<EOF
+          set(CMAKE_SYSTEM_NAME Haiku)
+          set(CMAKE_SYSTEM_PROCESSOR x86_64)
+          set(CMAKE_C_COMPILER x86_64-unknown-haiku-gcc)
+          set(CMAKE_CXX_COMPILER x86_64-unknown-haiku-g++)
+          set(CMAKE_AR x86_64-unknown-haiku-ar)
+          set(CMAKE_RANLIB x86_64-unknown-haiku-ranlib)
+          set(CMAKE_FIND_ROOT_PATH "$SYSROOT")
+          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          EOF
+      - name: Build for Haiku
+        shell: bash
+        run: |
+          source "$HOME/.cargo/env"
+          export SDL2_TOOLCHAIN="$PWD/haiku-toolchain.cmake"
+          cargo build --target "$HAIKU_TARGET" --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: touchHLE_Haiku_x86_64
+          path: target/x86_64-unknown-haiku/release/touchHLE
