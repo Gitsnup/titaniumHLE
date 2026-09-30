@@ -37,34 +37,15 @@ jobs:
             libx11-dev libxext-dev libxrandr-dev libxrender-dev \
             libxfixes-dev libxi-dev libxss-dev libxcursor-dev \
             libxkbcommon-dev
-      - name: Try to get cached copy of LLVM
-        id: cache-llvm
-        uses: actions/cache@v3
-        with:
-          path: tests/llvm
-          key: llvm_12_0_0_Linux_x64
-      - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
-        name: Download LLVM
-        run: curl -L -O "https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz"
-      - if: ${{ steps.cache-llvm.outputs.cache-hit != 'true' }}
-        name: Extract LLVM
-        run: tar -xf clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz && mkdir tests/llvm && mv clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-16.04/* tests/llvm
-      # LLVM 12's clang links against libtinfo.so.5, which Ubuntu 24.04 does
-      # not ship (only libtinfo.so.6). The two are ABI-compatible for clang's
-      # purposes, so symlink it.
-      - name: Provide libtinfo.so.5 for LLVM 12
-        run: sudo ln -s /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
-      - name: Get copy of common-3.0-sdk
-        run: cd ${{ github.workspace }}/tests && curl -L https://github.com/touchHLE/common-3.0-sdk/releases/latest/download/common-3.0.sdk-macOS-universal.tar.gz | tar xzv
       - name: Install x86_64 toolchain
         run: |
           rustup update stable
           rustup default stable
           rustup target add x86_64-unknown-linux-gnu
-      # The integration test links the TestApp with the `ld` from the iOS SDK
-      # (via clang -B), which is a Mach-O binary and can only execute on
-      # macOS. So on Linux we only run the unit tests, which don't compile
-      # iPhone OS executables.
+      # The full test suite (including the TestApp-building integration test)
+      # runs in the "Lint and Check (Main)" workflow, which has the whole
+      # ld64/cctools-port setup. Here we only run the unit tests, which need
+      # no iOS toolchain.
       - name: Test
         run: cargo test --lib --bins --target x86_64-unknown-linux-gnu
       - name: Build

@@ -77,7 +77,9 @@ jobs:
         with:
           name: touchHLE_macOS_x86_64
           path: touchHLE.dmg
+      - name: Package TestApp as IPA
+        run: cd tests && mkdir -p ipa-src/Payload && cp -r TestApp.app ipa-src/Payload/TestApp.app && cd ipa-src && zip -qry ../touchHLE_TestApp.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
           name: TestApp_built_on_macOS
-          path: tests/TestApp.app
+          path: tests/touchHLE_TestApp.ipa

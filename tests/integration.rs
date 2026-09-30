@@ -88,6 +88,12 @@ fn build_object<I: Iterator<Item = P>, P: AsRef<OsStr>>(
     eprintln!("Building {} for iPhone OS 3...", output_name.display());
     std::io::stderr().flush().unwrap();
     let mut cmd = Command::new(clang_path);
+    // Extra linker selection from the environment. Used by CI on Linux,
+    // where the linker is Apple's ld64 (via cctools-port) and has to be
+    // chosen explicitly with -fuse-ld=.
+    if let Ok(fuse_ld) = env::var("TOUCHHLE_TEST_FUSE_LD") {
+        cmd.arg(format!("-fuse-ld={fuse_ld}"));
+    }
     let output = cmd
         // Uncomment for verbose output (useful for debugging search path
         // issues)
