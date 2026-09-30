@@ -10,9 +10,9 @@
 // TODO: Audio format conversion
 
 use super::audio_file::{
-    kAudioFileBadPropertySizeError, kAudioFilePropertyDataFormat, kAudioFileReadPermission,
-    property_size, AudioFileClose, AudioFileGetProperty, AudioFileID, AudioFileOpenURL,
-    AudioFileReadBytes,
+    kAudioFileBadPropertySizeError, kAudioFilePropertyAudioDataPacketCount,
+    kAudioFilePropertyDataFormat, kAudioFileReadPermission, property_size, AudioFileClose,
+    AudioFileGetProperty, AudioFileID, AudioFileOpenURL, AudioFileReadBytes,
 };
 use super::audio_queue::is_supported_audio_format;
 use super::audio_unit::AudioBufferList;
@@ -102,6 +102,10 @@ fn ExtAudioFileOpenURL(
     0 // success
 }
 
+/// Property ID the game queries for the file's length in frames ('#frm',
+/// apparently kExtAudioFileProperty_FileLengthFrames from an old SDK build).
+const kExtAudioFileProperty_FileLengthFrames: u32 = fourcc(b"#frm");
+
 fn ExtAudioFileGetProperty(
     env: &mut Environment,
     in_ext_audio_file: ExtAudioFileRef,
@@ -113,6 +117,9 @@ fn ExtAudioFileGetProperty(
 
     let audio_file_property_id = match in_property_id {
         kExtAudioFileProperty_FileDataFormat => kAudioFilePropertyDataFormat,
+        // In the file data format, frames == packets, so forward to the
+        // packet count property.
+        kExtAudioFileProperty_FileLengthFrames => kAudioFilePropertyAudioDataPacketCount,
         _ => unimplemented!(
             "Unimplemented property ID: {}",
             debug_fourcc(in_property_id)
