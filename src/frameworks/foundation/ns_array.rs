@@ -709,8 +709,21 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())exchangeObjectAtIndex:(NSUInteger)index1
            withObjectAtIndex:(NSUInteger)index2 {
     let array = &mut env.objc.borrow_mut::<ArrayHostObject>(this).array;
-    // No retain/release: both objects stay in the array.
-    array.swap(index1 as usize, index2 as usize);
+    let (index1, index2) = (index1 as usize, index2 as usize);
+    // No retain/release: both objects stay in the array. Guard the bounds:
+    // a panic here would kill the whole app, and a real NSMutableArray would
+    // raise a catchable NSException rather than abort the process.
+    if index1 >= array.len() || index2 >= array.len() {
+        static LOG_ONCE: std::sync::Once = std::sync::Once::new();
+        LOG_ONCE.call_once(|| {
+            log!(
+                "exchangeObjectAtIndex:withObjectAtIndex: index out of bounds ({} or {} in a {}-element array), ignoring [this log will only be shown once]",
+                index1, index2, array.len()
+            );
+        });
+        return;
+    }
+    array.swap(index1, index2);
 }
 
 - (())removeLastObject {
