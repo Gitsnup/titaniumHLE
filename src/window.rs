@@ -1022,8 +1022,8 @@ impl Window {
 
         let neutral_x = options.x_tilt_offset.to_radians();
         let neutral_y = options.y_tilt_offset.to_radians();
-        let x_rotation_range = options.x_tilt_range.to_radians() / 2.0;
-        let y_rotation_range = options.y_tilt_range.to_radians() / 2.0;
+        let x_rotation_range = (options.x_tilt_range * options.tilt_sensitivity).to_radians() / 2.0;
+        let y_rotation_range = (options.y_tilt_range * options.tilt_sensitivity).to_radians() / 2.0;
         // (x, y) are swapped because the controller Y axis usually corresponds
         // to forward/backward movement, but rotating about the Y axis means
         // tilting the device left/right.

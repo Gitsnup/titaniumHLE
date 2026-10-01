@@ -13,6 +13,12 @@ Changes are categorised as follows:
 * Usability: changes to features of the emulator unrelated to the above, e.g. new input methods.
 * Other: when none of the above seem to fit.
 
+## Unreleased
+
+Usability:
+
+- Added a tilt sensitivity setting to the Quick options panel in the app picker, plus a `--tilt-sensitivity=` command-line option. This scales the simulated rotation range for tilt controls without changing the neutral position.
+
 ## v0.3.0 (2026-10-01)
 
 Compatibility:

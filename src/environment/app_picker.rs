@@ -146,6 +146,11 @@ struct AppPickerDelegateHostObject {
     orientation_portrait_upside_down: bool,
     orientation_landscape_left: bool,
     orientation_landscape_right: bool,
+    tilt_sensitivity_default: bool,
+    tilt_sensitivity_half: bool,
+    tilt_sensitivity_three_quarters: bool,
+    tilt_sensitivity_one_and_a_half: bool,
+    tilt_sensitivity_double: bool,
     analog_stick_tilt_controls: Option<bool>,
     network: Option<bool>,
     fullscreen: Option<bool>,
@@ -259,6 +264,23 @@ const CLASSES: ClassExports = objc_classes! {
 }
 - (())orientationLandscapeRight {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).orientation_landscape_right = true;
+}
+- (())tiltSensitivityDefault {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).tilt_sensitivity_default = true;
+}
+- (())tiltSensitivityHalf {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).tilt_sensitivity_half = true;
+}
+- (())tiltSensitivityThreeQuarters {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this)
+        .tilt_sensitivity_three_quarters = true;
+}
+- (())tiltSensitivityOneAndAHalf {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this)
+        .tilt_sensitivity_one_and_a_half = true;
+}
+- (())tiltSensitivityDouble {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).tilt_sensitivity_double = true;
 }
 - (())analogStickTiltControls:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
@@ -609,6 +631,7 @@ fn app_picker_inner(
     let mut quick_options_scale_hack: Option<NonZeroU32> = None;
     let mut quick_options_fullscreen: Option<()> = None;
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
+    let mut quick_options_tilt_sensitivity: Option<f32> = None;
     let mut quick_options_analog_stick_tilt_controls = true;
     let mut quick_options_network = false;
     let mut quick_options_print_fps = false;
@@ -650,9 +673,25 @@ fn app_picker_inner(
             }),
         );
     }
+    fn update_tilt_sensitivity_buttons(env: &mut Environment, buttons: &[id], value: Option<f32>) {
+        let selected_idx = match value {
+            None => 0,
+            Some(0.5) => 1,
+            Some(0.75) => 2,
+            Some(1.5) => 3,
+            Some(2.0) => 4,
+            _ => 0,
+        };
+        update_quick_option_buttons(env, buttons, selected_idx);
+    }
     if let Some(stuff) = &quick_options_stuff {
         update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
         update_orientation_buttons(env, &stuff.orientation_buttons, quick_options_orientation);
+        update_tilt_sensitivity_buttons(
+            env,
+            &stuff.tilt_sensitivity_buttons,
+            quick_options_tilt_sensitivity,
+        );
     }
 
     () = msg![env; window makeKeyAndVisible];
@@ -740,6 +779,11 @@ fn app_picker_inner(
                     env,
                     &stuff.orientation_buttons,
                     quick_options_orientation,
+                );
+                update_tilt_sensitivity_buttons(
+                    env,
+                    &stuff.tilt_sensitivity_buttons,
+                    quick_options_tilt_sensitivity,
                 );
             }
             let stuff = quick_options_stuff.as_ref().unwrap();
@@ -861,6 +905,51 @@ fn app_picker_inner(
                     quick_options_orientation,
                 );
             }
+        } else if std::mem::take(&mut host_obj.tilt_sensitivity_default) {
+            quick_options_tilt_sensitivity = None;
+            if let Some(stuff) = &quick_options_stuff {
+                update_tilt_sensitivity_buttons(
+                    env,
+                    &stuff.tilt_sensitivity_buttons,
+                    quick_options_tilt_sensitivity,
+                );
+            }
+        } else if std::mem::take(&mut host_obj.tilt_sensitivity_half) {
+            quick_options_tilt_sensitivity = Some(0.5);
+            if let Some(stuff) = &quick_options_stuff {
+                update_tilt_sensitivity_buttons(
+                    env,
+                    &stuff.tilt_sensitivity_buttons,
+                    quick_options_tilt_sensitivity,
+                );
+            }
+        } else if std::mem::take(&mut host_obj.tilt_sensitivity_three_quarters) {
+            quick_options_tilt_sensitivity = Some(0.75);
+            if let Some(stuff) = &quick_options_stuff {
+                update_tilt_sensitivity_buttons(
+                    env,
+                    &stuff.tilt_sensitivity_buttons,
+                    quick_options_tilt_sensitivity,
+                );
+            }
+        } else if std::mem::take(&mut host_obj.tilt_sensitivity_one_and_a_half) {
+            quick_options_tilt_sensitivity = Some(1.5);
+            if let Some(stuff) = &quick_options_stuff {
+                update_tilt_sensitivity_buttons(
+                    env,
+                    &stuff.tilt_sensitivity_buttons,
+                    quick_options_tilt_sensitivity,
+                );
+            }
+        } else if std::mem::take(&mut host_obj.tilt_sensitivity_double) {
+            quick_options_tilt_sensitivity = Some(2.0);
+            if let Some(stuff) = &quick_options_stuff {
+                update_tilt_sensitivity_buttons(
+                    env,
+                    &stuff.tilt_sensitivity_buttons,
+                    quick_options_tilt_sensitivity,
+                );
+            }
         } else if let Some(enabled) = std::mem::take(&mut host_obj.analog_stick_tilt_controls) {
             quick_options_analog_stick_tilt_controls = enabled;
         } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
@@ -893,6 +982,9 @@ fn app_picker_inner(
     }
     if !quick_options_analog_stick_tilt_controls {
         option_args.push("--disable-analog-stick-tilt-controls".to_string());
+    }
+    if let Some(sensitivity) = quick_options_tilt_sensitivity {
+        option_args.push(format!("--tilt-sensitivity={sensitivity}"));
     }
     if quick_options_network {
         option_args.push("--allow-network-access".to_string());
@@ -1527,6 +1619,7 @@ struct QuickOptionsStuff {
     page_label: id,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
+    tilt_sensitivity_buttons: [id; 5],
     app_settings: AppSettingsStuff,
     page_count: usize,
 }
@@ -1579,6 +1672,14 @@ fn setup_quick_options(
         RowKind::Switch("network:", false),
         RowKind::Label("Use analog sticks for tilt controls"),
         RowKind::Switch("analogStickTiltControls:", true),
+        RowKind::Label("Tilt sensitivity"),
+        RowKind::Buttons(&[
+            ("Default", "tiltSensitivityDefault"),
+            ("½×", "tiltSensitivityHalf"),
+            ("¾×", "tiltSensitivityThreeQuarters"),
+            ("1½×", "tiltSensitivityOneAndAHalf"),
+            ("2×", "tiltSensitivityDouble"),
+        ]),
     ];
     if crate::window::Window::rotatable_fullscreen() {
         // Fullscreen option doesn't make sense on always-fullscreen platforms
@@ -1842,6 +1943,7 @@ fn setup_quick_options(
         page_label,
         scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
         orientation_buttons: button_rows[1][..].try_into().unwrap(),
+        tilt_sensitivity_buttons: button_rows[2][..].try_into().unwrap(),
         app_settings: AppSettingsStuff {
             toggles,
             switches: app_settings_switches,

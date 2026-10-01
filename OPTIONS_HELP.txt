@@ -106,6 +106,18 @@ Game controller options:
         This is a floating-point (decimal) number of degrees, without a degree
         symbol. It may be negative.
 
+    --tilt-sensitivity=...
+        Scales the simulated rotation range for tilt controls, without changing
+        the neutral position.
+
+        This multiplies the rotation ranges set by --x-tilt-range= and
+        --y-tilt-range= (or their defaults). For example, a value of 2 makes
+        the same stick movement produce twice as much simulated tilt, while a
+        value of 0 makes stick movement have no effect on tilt.
+
+        This is a floating-point (decimal) number between 0 and 10. The default
+        value is 1.
+
     --button-to-touch=...
         Maps a button on a game controller to a point on the simulated touch
         screen of the device. Pressing the button will behave like touching that

@@ -44,6 +44,7 @@ pub struct Options {
     pub y_tilt_range: f32,
     pub x_tilt_offset: f32,
     pub y_tilt_offset: f32,
+    pub tilt_sensitivity: f32,
     pub button_to_touch: HashMap<Button, (f32, f32)>,
     pub dpad_to_touch: Option<(f32, f32, f32, f32)>,
     pub stick_to_touch: Option<(f32, f32, f32, f32)>,
@@ -77,6 +78,7 @@ impl Default for Options {
             y_tilt_range: 60.0,
             x_tilt_offset: 0.0,
             y_tilt_offset: 0.0,
+            tilt_sensitivity: 1.0,
             button_to_touch: HashMap::new(),
             dpad_to_touch: None,
             stick_to_touch: None,
@@ -142,6 +144,14 @@ impl Options {
             self.x_tilt_offset = parse_degrees(value, "X tilt offset")?;
         } else if let Some(value) = arg.strip_prefix("--y-tilt-offset=") {
             self.y_tilt_offset = parse_degrees(value, "Y tilt offset")?;
+        } else if let Some(value) = arg.strip_prefix("--tilt-sensitivity=") {
+            let sensitivity: f32 = value
+                .parse()
+                .map_err(|_| "Value for tilt sensitivity is invalid".to_string())?;
+            if !sensitivity.is_finite() || !(0.0..=10.0).contains(&sensitivity) {
+                return Err("Value for tilt sensitivity is out of range".to_string());
+            }
+            self.tilt_sensitivity = sensitivity;
         } else if let Some(values) = arg.strip_prefix("--button-to-touch=") {
             let (button, coords) = values
                 .split_once(',')
