@@ -4,13 +4,6 @@ name: Lint and Check (Main)
 # cheap Linux runner, in parallel with and ahead of the per-platform build
 # workflows. Platform builds no longer lint: this catches style/clippy
 # regressions before compilation is worth doing.
-#
-# This workflow also builds the TestApp: it runs the full test suite
-# (including the integration test that compiles TestApp for iPhone OS).
-# On Linux, that's only possible by linking with Apple's ld64, ported via
-# cctools-port, because the linker inside the iOS SDK is a Mach-O binary
-# that cannot execute on a Linux runner. The TestApp is packaged as a
-# regular .ipa and uploaded as an artifact.
 
 on:
   push:
@@ -24,12 +17,6 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-24.04
-
-    env:
-      DEPS: ${{ github.workspace }}/linker-deps
-      FAKELD: ${{ github.workspace }}/fakeld
-      LD_LIBRARY_PATH: ${{ github.workspace }}/linker-deps/lib
-      TOUCHHLE_TEST_FUSE_LD: ${{ github.workspace }}/cctools-port/cctools-inst/bin/arm-apple-darwin11-ld
 
     steps:
       # actions/checkout really doesn't work well with git-describe for some
@@ -46,12 +33,11 @@ jobs:
       # Clippy builds the full dependency tree (including bundled SDL2, which
       # needs X11/ALSA headers, and dynarmic, which needs Boost and cmake), so
       # these must be installed even though we never link or run anything.
-      # clang is needed for building the TestApp (see below).
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake clang pkg-config libboost-all-dev \
+            cmake pkg-config libboost-all-dev \
             libasound2-dev \
             libx11-dev libxext-dev libxrandr-dev libxrender-dev \
             libxfixes-dev libxi-dev libxss-dev libxcursor-dev \
@@ -60,75 +46,9 @@ jobs:
         run: |
           rustup update stable
           rustup default stable
-      # The integration test looks for clang at tests/llvm/bin/clang. The
-      # pinned LLVM 12 release doesn't run on Ubuntu 24.04 (it needs
-      # libtinfo.so.5), so use the distro clang instead, which is newer and
-      # handles the old iOS target just fine.
-      - name: Point tests/llvm at the distro clang
-        run: mkdir -p tests/llvm/bin && ln -s "$(command -v clang)" tests/llvm/bin/clang
-      - name: Get copy of common-3.0-sdk
-        run: cd ${{ github.workspace }}/tests && curl -L https://github.com/touchHLE/common-3.0-sdk/releases/latest/download/common-3.0.sdk-macOS-universal.tar.gz | tar xzv
-      #
-      # Build Apple's ld64 for Linux (via cctools-port), so the TestApp can
-      # be linked on a Linux runner.
-      #
-      # ld64 needs the BlocksRuntime and libdispatch libraries.
-      - name: Build BlocksRuntime
-        run: |
-          git clone --depth 1 https://github.com/mackyle/blocksruntime
-          cd blocksruntime && ./buildlib
-          mkdir -p "$DEPS/lib" "$DEPS/include"
-          cp libBlocksRuntime.a "$DEPS/lib/"
-          cp BlocksRuntime/Block.h BlocksRuntime/Block_private.h "$DEPS/include/"
-      - name: Build libdispatch
-        run: |
-          git clone --depth 1 https://github.com/tpoechtrager/apple-libdispatch
-          cd apple-libdispatch && mkdir -p build && cd build
-          CC=clang CXX=clang++ cmake .. -DCMAKE_INSTALL_PREFIX="$DEPS" \
-            -DCMAKE_BUILD_TYPE=Release -DENABLE_SWIFT=OFF
-          make -j4 && make install
-      - name: Build cctools-port ld64
-        run: |
-          git clone --depth 1 https://github.com/tpoechtrager/cctools-port
-          cd cctools-port/cctools
-          # This modern ld64 enforces that dylibs link with libSystem, but
-          # the libSystem stub itself is built before any other dylib and
-          # the ancient ld inside the SDK (which macOS CI uses) predates
-          # that check. Patch it out to match the old behavior.
-          sed -i 's/bool grandfather = false;/bool grandfather = true;/' ld64/src/ld/InputFiles.cpp
-          ./configure --prefix="$PWD/../cctools-inst" --target=arm-apple-darwin11 \
-            LDFLAGS="-L$DEPS/lib" CPPFLAGS="-I$DEPS/include"
-          make -j4 && make install
-          # Staged for the SDK tool swap below (ld + lipo).
-          mkdir -p "$FAKELD"
-          ln -s "$PWD/../cctools-inst/bin/arm-apple-darwin11-ld" "$FAKELD/ld"
-          ln -s "$PWD/../cctools-inst/bin/arm-apple-darwin11-lipo" "$FAKELD/lipo"
-      # The SDK ships `ld` and `lipo` as Mach-O binaries, which clang finds
-      # via the -B flag before it searches the PATH — and they cannot execute
-      # on Linux. Replace them with the working Linux builds from cctools.
-      - name: Swap the SDK's dead Mach-O tools for Linux ones
-        run: |
-          rm -f tests/common-3.0.sdk/usr/bin/ld tests/common-3.0.sdk/usr/bin/lipo
-          ln -s "$FAKELD/ld" tests/common-3.0.sdk/usr/bin/ld
-          ln -s "$FAKELD/lipo" tests/common-3.0.sdk/usr/bin/lipo
       # lint.sh runs: comment-length check, `cargo clippy -- --deny warnings`,
       # and `cargo doc` with --deny-warnings rustdocflags.
       - name: Lint
         run: dev-scripts/lint.sh
-      - name: Test (including TestApp build)
-        run: |
-          # No sound card on the runner; force OpenAL's null driver.
-          printf '[general]\ndrivers = null\n' > alsoft.ini
-          cargo test
-        env:
-          ALSOFT_CONF: ${{ github.workspace }}/alsoft.ini
-      - name: Package TestApp as IPA
-        run: |
-          cd tests
-          mkdir -p ipa-src/Payload
-          cp -r TestApp.app ipa-src/Payload/TestApp.app
-          cd ipa-src && zip -qry ../touchHLE_TestApp.ipa Payload
-      - uses: actions/upload-artifact@v4
-        with:
-          name: TestApp_built_on_Linux
-          path: tests/touchHLE_TestApp.ipa
+      - name: Test
+        run: cargo test --lib --bins
