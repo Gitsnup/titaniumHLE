@@ -43,7 +43,7 @@ struct GLES1NativeSharedState {
     client_active_texture: GLenum,
 }
 
-/// Indices into [GLES1NativeContext::client_arrays].
+/// Indices into [GLES1NativeSharedState::client_arrays].
 const CLIENT_ARRAY_VERTEX: usize = 0;
 const CLIENT_ARRAY_NORMAL: usize = 1;
 const CLIENT_ARRAY_TEXCOORD: usize = 2;
@@ -1031,8 +1031,7 @@ impl<'gl_ctx> GLES1Native<'gl_ctx> {
 
         let mut region_offset: usize = 0;
         let mut first_region = true;
-        for i in 0..arrays.len() {
-            let state = &mut arrays[i];
+        for (i, state) in arrays.iter_mut().enumerate() {
             if !(state.enabled && !state.buffer_backed && !state.pointer.is_null()) {
                 continue;
             }
@@ -1085,7 +1084,7 @@ impl<'gl_ctx> GLES1Native<'gl_ctx> {
                 indices,
                 gles11::DYNAMIC_DRAW,
             );
-            gles11::DrawElements(mode, count, index_type, 0 as *const GLvoid);
+            gles11::DrawElements(mode, count, index_type, std::ptr::null::<GLvoid>());
             gles11::BindBuffer(gles11::ELEMENT_ARRAY_BUFFER, 0);
         } else {
             gles11::DrawArrays(mode, 0, count);
@@ -1095,8 +1094,7 @@ impl<'gl_ctx> GLES1Native<'gl_ctx> {
         // client pointers back the way they were (bound to no buffer), so the
         // game's next pointerless VBO draw still sees its own state.
         gles11::BindBuffer(gles11::ARRAY_BUFFER, 0);
-        for i in 0..arrays.len() {
-            let state = &arrays[i];
+        for (i, state) in arrays.iter().enumerate() {
             if state.enabled && !state.buffer_backed && !state.pointer.is_null() {
                 let (size, type_, stride, pointer) =
                     (state.size, state.type_, state.stride, state.pointer);
