@@ -353,6 +353,14 @@ typedef unsigned short CGGlyph;
 CGFontRef CGFontCreateWithDataProvider(CGDataProviderRef name);
 void CGFontRelease(CGFontRef font);
 
+// Present in the real CoreGraphics headers, but not in the common-3.0-sdk.
+// Modern clang (16+) treats calling an undeclared function as an error, which
+// would fail the TestApp build on newer toolchains.
+typedef unsigned short UniChar;
+void CGFontGetGlyphsForUnichars(CGFontRef font, const UniChar *chars,
+                                CGGlyph *glyphs, long count);
+void CGContextSetTextMatrix(CGContextRef c, CGAffineTransform t);
+
 void CGContextSetFont(CGContextRef c, CGFontRef font);
 void CGContextSetFontSize(CGContextRef c, CGFloat size);
 void CGContextShowGlyphsAtPoint(CGContextRef c, CGFloat x, CGFloat y,

@@ -67,8 +67,6 @@ jobs:
   # as an artifact.
   testapp-linux:
     runs-on: ubuntu-24.04
-    # Experimental: the final executable link is still being debugged.
-    continue-on-error: true
 
     env:
       DEPS: ${{ github.workspace }}/linker-deps
