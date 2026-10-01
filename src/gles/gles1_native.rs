@@ -24,6 +24,70 @@ use std::marker::PhantomData;
 pub struct GLES1NativeContext {
     gl_ctx: GLContext,
     is_loaded: bool,
+    /// Shadow state for client-side vertex arrays. Some drivers (notably the
+    /// bundled ANGLE build on Android) mishandle client-memory pointers, so
+    /// arrays backed by guest memory are gathered into a scratch VBO at draw
+    /// time instead. Lives here (owned) because [GLES1Native] is rebuilt on
+    /// every context switch.
+    shared: GLES1NativeSharedState,
+}
+
+/// Client-array shadow state shared between [GLES1NativeContext] and the
+/// [GLES1Native] views handed to the guest. Index by the `CLIENT_ARRAY_*`
+/// constants.
+struct GLES1NativeSharedState {
+    client_arrays: [ClientArray; 4],
+    scratch_vbo: GLuint,
+    scratch_ebo: GLuint,
+    /// GL_TEXTUREi bound via ClientActiveTexture; only TEXTURE0 is shadowed.
+    client_active_texture: GLenum,
+}
+
+/// Indices into [GLES1NativeContext::client_arrays].
+const CLIENT_ARRAY_VERTEX: usize = 0;
+const CLIENT_ARRAY_NORMAL: usize = 1;
+const CLIENT_ARRAY_TEXCOORD: usize = 2;
+const CLIENT_ARRAY_COLOR: usize = 3;
+
+#[derive(Clone, Copy)]
+struct ClientArray {
+    enabled: bool,
+    size: GLint,
+    type_: GLenum,
+    stride: GLsizei,
+    /// Host pointer (client array) or VBO-relative offset (buffer array).
+    pointer: *const GLvoid,
+    /// True if this pointer was set with an ARRAY_BUFFER bound (it's an
+    /// offset into that buffer and the driver already knows about it).
+    buffer_backed: bool,
+}
+impl ClientArray {
+    const fn new() -> Self {
+        Self {
+            enabled: false,
+            size: 4,
+            type_: gles11::FLOAT,
+            stride: 0,
+            pointer: std::ptr::null(),
+            buffer_backed: false,
+        }
+    }
+    fn type_size(type_: GLenum) -> usize {
+        match type_ {
+            gles11::BYTE | gles11::UNSIGNED_BYTE => 1,
+            gles11::SHORT | gles11::UNSIGNED_SHORT => 2,
+            // 2.10.3 | FIXED
+            gles11::FIXED | gles11::FLOAT => 4,
+            _ => 4,
+        }
+    }
+    fn bytes_per_vertex(&self) -> usize {
+        if self.stride != 0 {
+            self.stride as usize
+        } else {
+            self.size as usize * Self::type_size(self.type_)
+        }
+    }
 }
 impl GLESContext for GLES1NativeContext {
     fn description() -> &'static str {
@@ -34,6 +98,17 @@ impl GLESContext for GLES1NativeContext {
         Ok(Self {
             gl_ctx: window.create_gl_context(GLVersion::GLES11)?,
             is_loaded: false,
+            shared: GLES1NativeSharedState {
+                client_arrays: [
+                    ClientArray::new(),
+                    ClientArray::new(),
+                    ClientArray::new(),
+                    ClientArray::new(),
+                ],
+                scratch_vbo: 0,
+                scratch_ebo: 0,
+                client_active_texture: gles11::TEXTURE0,
+            },
         })
     }
 
@@ -44,6 +119,7 @@ impl GLESContext for GLES1NativeContext {
         if self.gl_ctx.is_current() && self.is_loaded {
             return Box::new(GLES1Native {
                 _gl_lifetime: PhantomData,
+                shared: &mut self.shared,
             });
         }
 
@@ -54,6 +130,7 @@ impl GLESContext for GLES1NativeContext {
         self.is_loaded = true;
         Box::new(GLES1Native {
             _gl_lifetime: PhantomData,
+            shared: &mut self.shared,
         })
     }
 
@@ -65,6 +142,7 @@ impl GLESContext for GLES1NativeContext {
         if self.gl_ctx.is_current() && self.is_loaded {
             return Box::new(GLES1Native {
                 _gl_lifetime: PhantomData,
+                shared: &mut self.shared,
             });
         }
 
@@ -73,12 +151,14 @@ impl GLESContext for GLES1NativeContext {
         self.is_loaded = true;
         Box::new(GLES1Native {
             _gl_lifetime: PhantomData,
+            shared: &mut self.shared,
         })
     }
 }
 
 pub struct GLES1Native<'gl_ctx> {
     _gl_lifetime: PhantomData<&'gl_ctx ()>,
+    shared: &'gl_ctx mut GLES1NativeSharedState,
 }
 
 impl GLES for GLES1Native<'_> {
@@ -111,11 +191,18 @@ impl GLES for GLES1Native<'_> {
     }
     unsafe fn ClientActiveTexture(&mut self, texture: GLenum) {
         gles11::ClientActiveTexture(texture);
+        self.shared.client_active_texture = texture;
     }
     unsafe fn EnableClientState(&mut self, array: GLenum) {
+        if let Some(idx) = Self::array_index(array) {
+            self.shared.client_arrays[idx].enabled = true;
+        }
         gles11::EnableClientState(array)
     }
     unsafe fn DisableClientState(&mut self, array: GLenum) {
+        if let Some(idx) = Self::array_index(array) {
+            self.shared.client_arrays[idx].enabled = false;
+        }
         gles11::DisableClientState(array)
     }
     unsafe fn GetBooleanv(&mut self, pname: GLenum, params: *mut GLboolean) {
@@ -369,10 +456,10 @@ impl GLES for GLES1Native<'_> {
         stride: GLsizei,
         pointer: *const GLvoid,
     ) {
-        gles11::ColorPointer(size, type_, stride, pointer)
+        self.set_client_pointer(CLIENT_ARRAY_COLOR, size, type_, stride, pointer);
     }
     unsafe fn NormalPointer(&mut self, type_: GLenum, stride: GLsizei, pointer: *const GLvoid) {
-        gles11::NormalPointer(type_, stride, pointer)
+        self.set_client_pointer(CLIENT_ARRAY_NORMAL, 3, type_, stride, pointer);
     }
     unsafe fn TexCoordPointer(
         &mut self,
@@ -381,7 +468,12 @@ impl GLES for GLES1Native<'_> {
         stride: GLsizei,
         pointer: *const GLvoid,
     ) {
-        gles11::TexCoordPointer(size, type_, stride, pointer)
+        if self.shared.client_active_texture != gles11::TEXTURE0 {
+            // Only the first texture unit is shadowed; pass the rest through.
+            gles11::TexCoordPointer(size, type_, stride, pointer);
+            return;
+        }
+        self.set_client_pointer(CLIENT_ARRAY_TEXCOORD, size, type_, stride, pointer);
     }
     unsafe fn VertexPointer(
         &mut self,
@@ -390,11 +482,14 @@ impl GLES for GLES1Native<'_> {
         stride: GLsizei,
         pointer: *const GLvoid,
     ) {
-        gles11::VertexPointer(size, type_, stride, pointer)
+        self.set_client_pointer(CLIENT_ARRAY_VERTEX, size, type_, stride, pointer);
     }
 
     // Drawing
     unsafe fn DrawArrays(&mut self, mode: GLenum, first: GLint, count: GLsizei) {
+        if self.draw_client_arrays(mode, first, count, std::ptr::null(), false, gles11::UNSIGNED_SHORT) {
+            return;
+        }
         gles11::DrawArrays(mode, first, count)
     }
     unsafe fn DrawElements(
@@ -404,6 +499,12 @@ impl GLES for GLES1Native<'_> {
         type_: GLenum,
         indices: *const GLvoid,
     ) {
+        let mut bound: GLint = 0;
+        gles11::GetIntegerv(gles11::ELEMENT_ARRAY_BUFFER_BINDING, &mut bound);
+        let gather_indices = bound == 0 && !indices.is_null();
+        if self.draw_client_arrays(mode, 0, count, indices, gather_indices, type_) {
+            return;
+        }
         gles11::DrawElements(mode, count, type_, indices)
     }
 
@@ -835,5 +936,174 @@ impl GLES for GLES1Native<'_> {
     }
     unsafe fn UnmapBufferOES(&mut self, target: GLenum) -> GLboolean {
         gles11::UnmapBufferOES(target)
+    }
+}
+
+impl<'gl_ctx> GLES1Native<'gl_ctx> {
+    fn array_index(array: GLenum) -> Option<usize> {
+        match array {
+            gles11::VERTEX_ARRAY => Some(CLIENT_ARRAY_VERTEX),
+            gles11::NORMAL_ARRAY => Some(CLIENT_ARRAY_NORMAL),
+            gles11::TEXTURE_COORD_ARRAY => Some(CLIENT_ARRAY_TEXCOORD),
+            gles11::COLOR_ARRAY => Some(CLIENT_ARRAY_COLOR),
+            _ => None,
+        }
+    }
+
+    /// Issue the driver-side gl*Pointer call for one client array.
+    unsafe fn driver_set_pointer(
+        index: usize,
+        size: GLint,
+        type_: GLenum,
+        stride: GLsizei,
+        pointer: *const GLvoid,
+    ) {
+        match index {
+            CLIENT_ARRAY_VERTEX => gles11::VertexPointer(size, type_, stride, pointer),
+            CLIENT_ARRAY_NORMAL => gles11::NormalPointer(type_, stride, pointer),
+            CLIENT_ARRAY_TEXCOORD => gles11::TexCoordPointer(size, type_, stride, pointer),
+            CLIENT_ARRAY_COLOR => gles11::ColorPointer(size, type_, stride, pointer),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Record a gl*Pointer call. When an ARRAY_BUFFER is bound, the pointer is
+    /// an offset into that buffer and is passed to the driver immediately
+    /// (the driver captures the association at pointer-call time). Otherwise
+    /// it's a client-memory pointer, which is only shadowed here: at draw time
+    /// the data gets gathered into a scratch VBO, because some drivers (the
+    /// bundled ANGLE build on Android, at least) mishandle client pointers.
+    unsafe fn set_client_pointer(
+        &mut self,
+        index: usize,
+        size: GLint,
+        type_: GLenum,
+        stride: GLsizei,
+        pointer: *const GLvoid,
+    ) {
+        let mut bound: GLint = 0;
+        gles11::GetIntegerv(gles11::ARRAY_BUFFER_BINDING, &mut bound);
+        let state = &mut self.shared.client_arrays[index];
+        state.size = size;
+        state.type_ = type_;
+        state.stride = stride;
+        state.pointer = pointer;
+        state.buffer_backed = bound != 0;
+        if state.buffer_backed {
+            Self::driver_set_pointer(index, size, type_, stride, pointer);
+        }
+    }
+
+    /// If any enabled vertex array is client-memory-backed, gather the needed
+    /// regions of all such arrays into a scratch VBO, point the driver at it,
+    /// and issue the draw. Also gathers client-memory index data for
+    /// `glDrawElements` if `gather_indices` is set. Returns `false` if the
+    /// draw doesn't involve client arrays and should be passed through.
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn draw_client_arrays(
+        &mut self,
+        mode: GLenum,
+        first: GLint,
+        count: GLsizei,
+        indices: *const GLvoid,
+        gather_indices: bool,
+        index_type: GLenum,
+    ) -> bool {
+        let arrays = &mut self.shared.client_arrays;
+        let any_client = arrays
+            .iter()
+            .any(|a| a.enabled && !a.buffer_backed && !a.pointer.is_null());
+        if !any_client && !gather_indices {
+            return false;
+        }
+        if count <= 0 {
+            return false;
+        }
+
+        if self.shared.scratch_vbo == 0 {
+            let mut buf: GLuint = 0;
+            gles11::GenBuffers(1, &mut buf);
+            self.shared.scratch_vbo = buf;
+        }
+        let mut saved_array_buffer: GLint = 0;
+        gles11::GetIntegerv(gles11::ARRAY_BUFFER_BINDING, &mut saved_array_buffer);
+        gles11::BindBuffer(gles11::ARRAY_BUFFER, self.shared.scratch_vbo);
+
+        let mut region_offset: usize = 0;
+        let mut first_region = true;
+        for i in 0..arrays.len() {
+            let state = &mut arrays[i];
+            if !(state.enabled && !state.buffer_backed && !state.pointer.is_null()) {
+                continue;
+            }
+            let step = if state.stride != 0 {
+                state.stride as usize
+            } else {
+                state.bytes_per_vertex()
+            };
+            let start = first.max(0) as usize * step;
+            let span = (count as usize - 1) * step + state.bytes_per_vertex();
+            let src = state.pointer.cast::<u8>().add(start);
+            let mut data = vec![0u8; span];
+            std::ptr::copy_nonoverlapping(src, data.as_mut_ptr(), span);
+            if first_region {
+                gles11::BufferData(
+                    gles11::ARRAY_BUFFER,
+                    span as GLsizeiptr,
+                    data.as_ptr() as *const GLvoid,
+                    gles11::DYNAMIC_DRAW,
+                );
+                first_region = false;
+            } else {
+                gles11::BufferSubData(
+                    gles11::ARRAY_BUFFER,
+                    region_offset as GLintptr,
+                    span as GLsizeiptr,
+                    data.as_ptr() as *const GLvoid,
+                );
+            }
+            let (size, type_, stride) = (state.size, state.type_, state.stride);
+            let offset_ptr = region_offset as *const GLvoid;
+            Self::driver_set_pointer(i, size, type_, stride, offset_ptr);
+            region_offset = (region_offset + span + 3) & !3;
+        }
+
+        if gather_indices {
+            if self.shared.scratch_ebo == 0 {
+                let mut buf: GLuint = 0;
+                gles11::GenBuffers(1, &mut buf);
+                self.shared.scratch_ebo = buf;
+            }
+            let index_size: GLsizeiptr = match index_type {
+                gles11::UNSIGNED_BYTE => 1,
+                _ => 2,
+            };
+            gles11::BindBuffer(gles11::ELEMENT_ARRAY_BUFFER, self.shared.scratch_ebo);
+            gles11::BufferData(
+                gles11::ELEMENT_ARRAY_BUFFER,
+                count as GLsizeiptr * index_size,
+                indices,
+                gles11::DYNAMIC_DRAW,
+            );
+            gles11::DrawElements(mode, count, index_type, 0 as *const GLvoid);
+            gles11::BindBuffer(gles11::ELEMENT_ARRAY_BUFFER, 0);
+        } else {
+            gles11::DrawArrays(mode, 0, count);
+        }
+
+        // Restore driver state: rebind the previous ARRAY_BUFFER and put the
+        // client pointers back the way they were (bound to no buffer), so the
+        // game's next pointerless VBO draw still sees its own state.
+        gles11::BindBuffer(gles11::ARRAY_BUFFER, 0);
+        for i in 0..arrays.len() {
+            let state = &arrays[i];
+            if state.enabled && !state.buffer_backed && !state.pointer.is_null() {
+                let (size, type_, stride, pointer) =
+                    (state.size, state.type_, state.stride, state.pointer);
+                Self::driver_set_pointer(i, size, type_, stride, pointer);
+            }
+        }
+        gles11::BindBuffer(gles11::ARRAY_BUFFER, saved_array_buffer as GLuint);
+        true
     }
 }
