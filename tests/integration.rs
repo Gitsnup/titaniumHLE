@@ -325,6 +325,10 @@ fn test_app() -> Result<(), Box<dyn Error>> {
         let compile_args = [
             "-mlinker-version=253",
             "-fno-builtin",
+            // The common-3.0.sdk omits some CoreGraphics declarations used by
+            // TestApp, so these calls are implicit. Newer clang rejects that
+            // outright; downgrade it to a warning.
+            "-Wno-error=implicit-function-declaration",
             "-nostdlib",
             &format!("-Wl,-install_name,{}", dylib_path),
             "-Wno-objc-root-class", // silence clang warning about inheritance
