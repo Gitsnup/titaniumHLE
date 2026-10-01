@@ -557,6 +557,12 @@ fn glBufferData(
     data: ConstPtr<GLvoid>,
     usage: GLenum,
 ) {
+    if size < 0 {
+        // Real GL raises GL_INVALID_VALUE here; some apps (e.g. Cut the Rope)
+        // call this with a negative size and expect the call to be a no-op.
+        log_once!("glBufferData called with negative size {size}, ignoring");
+        return;
+    }
     with_ctx_and_mem(env, |gles, mem| unsafe {
         let data = if data.is_null() {
             std::ptr::null()
@@ -575,6 +581,11 @@ fn glBufferSubData(
     size: GuestGLsizeiptr,
     data: ConstPtr<GLvoid>,
 ) {
+    if size < 0 {
+        // Real GL raises GL_INVALID_VALUE here; see glBufferData above.
+        log_once!("glBufferSubData called with negative size {size}, ignoring");
+        return;
+    }
     with_ctx_and_mem(env, |gles, mem| unsafe {
         let data = if data.is_null() {
             std::ptr::null()
