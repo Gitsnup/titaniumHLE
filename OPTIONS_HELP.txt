@@ -255,6 +255,19 @@ Other options:
         Whether and how this preference is respected, and whether any particular
         language is supported, is determined entirely by the app.
 
+    --country-code=...
+        Specifies a country (region) code to be reported to the app.
+
+        This should be an ISO 3166-1 alpha-2 country code (two letters), for
+        example --country-code=JP for Japan. Letter case is ignored.
+
+        If this option is not specified, the country code comes from your
+        operating system's region settings, or "US" if none could be
+        determined.
+
+        Whether and how this preference is respected is determined entirely by
+        the app.
+
     --headless
         Run in headless mode. touchHLE will not create a window, so there will
         be no graphical output and no input. Only useful for command-line apps.

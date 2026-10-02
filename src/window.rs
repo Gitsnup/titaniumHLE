@@ -1576,6 +1576,11 @@ pub fn get_preferred_language_codes(env: &mut Environment) -> Vec<String> {
 }
 
 pub fn get_preferred_country_codes(env: &mut Environment) -> Vec<String> {
+    let options = env.options.as_ref();
+    if let Some(ref country_code) = options.country_code {
+        log!("The app requested your current locale. {:?} will be reported based on your --country-code= option.", country_code);
+        return vec![country_code.clone()];
+    }
     env.on_parent_stack_in_coroutine(|_, _| {
         sdl2::locale::get_preferred_locales()
             .filter_map(|loc| loc.country)

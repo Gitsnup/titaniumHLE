@@ -45,6 +45,7 @@ pub struct Options {
     pub x_tilt_offset: f32,
     pub y_tilt_offset: f32,
     pub tilt_sensitivity: f32,
+    pub country_code: Option<String>,
     pub button_to_touch: HashMap<Button, (f32, f32)>,
     pub dpad_to_touch: Option<(f32, f32, f32, f32)>,
     pub stick_to_touch: Option<(f32, f32, f32, f32)>,
@@ -79,6 +80,7 @@ impl Default for Options {
             x_tilt_offset: 0.0,
             y_tilt_offset: 0.0,
             tilt_sensitivity: 1.0,
+            country_code: None,
             button_to_touch: HashMap::new(),
             dpad_to_touch: None,
             stick_to_touch: None,
@@ -152,6 +154,12 @@ impl Options {
                 return Err("Value for tilt sensitivity is out of range".to_string());
             }
             self.tilt_sensitivity = sensitivity;
+        } else if let Some(value) = arg.strip_prefix("--country-code=") {
+            let code = value.to_ascii_uppercase();
+            if code.len() != 2 || !code.bytes().all(|b| b.is_ascii_alphabetic()) {
+                return Err("Value for country code is invalid".to_string());
+            }
+            self.country_code = Some(code);
         } else if let Some(values) = arg.strip_prefix("--button-to-touch=") {
             let (button, coords) = values
                 .split_once(',')

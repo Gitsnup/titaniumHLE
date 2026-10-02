@@ -151,6 +151,12 @@ struct AppPickerDelegateHostObject {
     tilt_sensitivity_three_quarters: bool,
     tilt_sensitivity_one_and_a_half: bool,
     tilt_sensitivity_double: bool,
+    region_default: bool,
+    region_us: bool,
+    region_gb: bool,
+    region_jp: bool,
+    region_fr: bool,
+    region_de: bool,
     analog_stick_tilt_controls: Option<bool>,
     network: Option<bool>,
     fullscreen: Option<bool>,
@@ -281,6 +287,24 @@ const CLASSES: ClassExports = objc_classes! {
 }
 - (())tiltSensitivityDouble {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).tilt_sensitivity_double = true;
+}
+- (())regionDefault {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).region_default = true;
+}
+- (())regionUS {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).region_us = true;
+}
+- (())regionGB {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).region_gb = true;
+}
+- (())regionJP {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).region_jp = true;
+}
+- (())regionFR {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).region_fr = true;
+}
+- (())regionDE {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).region_de = true;
 }
 - (())analogStickTiltControls:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
@@ -602,10 +626,7 @@ fn app_picker_inner(
         main_view,
         app_frame.size,
         buttons_row_center,
-        &[
-            ("Add game", "addGame"),
-            ("Quick options", "quickOptionsShow"),
-        ],
+        &[("Add game", "addGame"), ("Settings", "quickOptionsShow")],
         None,
     );
     make_button_row(
@@ -625,13 +646,14 @@ fn app_picker_inner(
     let mut copyright_info_stuff = setup_copyright_info(env, delegate, main_view, app_frame);
     let mut copyright_info_page_idx = 0;
 
-    // Built lazily on first open of the Quick options panel. It shows every
+    // Built lazily on first open of the Settings panel. It shows every
     // installed app's Settings.bundle toggles, so it never needs rebuilding.
     let mut quick_options_stuff: Option<QuickOptionsStuff> = None;
     let mut quick_options_scale_hack: Option<NonZeroU32> = None;
     let mut quick_options_fullscreen: Option<()> = None;
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
     let mut quick_options_tilt_sensitivity: Option<f32> = None;
+    let mut quick_options_country_code: Option<&'static str> = None;
     let mut quick_options_analog_stick_tilt_controls = true;
     let mut quick_options_network = false;
     let mut quick_options_print_fps = false;
@@ -684,9 +706,17 @@ fn app_picker_inner(
         };
         update_quick_option_buttons(env, buttons, selected_idx);
     }
+    fn update_region_buttons(env: &mut Environment, buttons: &[id], value: Option<&str>) {
+        const REGION_CODES: [&str; 5] = ["US", "GB", "JP", "FR", "DE"];
+        let selected_idx = value
+            .and_then(|v| REGION_CODES.iter().position(|&code| code == v))
+            .map_or(0, |idx| idx + 1);
+        update_quick_option_buttons(env, buttons, selected_idx);
+    }
     if let Some(stuff) = &quick_options_stuff {
         update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
         update_orientation_buttons(env, &stuff.orientation_buttons, quick_options_orientation);
+        update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
         update_tilt_sensitivity_buttons(
             env,
             &stuff.tilt_sensitivity_buttons,
@@ -780,6 +810,7 @@ fn app_picker_inner(
                     &stuff.orientation_buttons,
                     quick_options_orientation,
                 );
+                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
                 update_tilt_sensitivity_buttons(
                     env,
                     &stuff.tilt_sensitivity_buttons,
@@ -905,6 +936,36 @@ fn app_picker_inner(
                     quick_options_orientation,
                 );
             }
+        } else if std::mem::take(&mut host_obj.region_default) {
+            quick_options_country_code = None;
+            if let Some(stuff) = &quick_options_stuff {
+                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+            }
+        } else if std::mem::take(&mut host_obj.region_us) {
+            quick_options_country_code = Some("US");
+            if let Some(stuff) = &quick_options_stuff {
+                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+            }
+        } else if std::mem::take(&mut host_obj.region_gb) {
+            quick_options_country_code = Some("GB");
+            if let Some(stuff) = &quick_options_stuff {
+                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+            }
+        } else if std::mem::take(&mut host_obj.region_jp) {
+            quick_options_country_code = Some("JP");
+            if let Some(stuff) = &quick_options_stuff {
+                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+            }
+        } else if std::mem::take(&mut host_obj.region_fr) {
+            quick_options_country_code = Some("FR");
+            if let Some(stuff) = &quick_options_stuff {
+                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+            }
+        } else if std::mem::take(&mut host_obj.region_de) {
+            quick_options_country_code = Some("DE");
+            if let Some(stuff) = &quick_options_stuff {
+                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+            }
         } else if std::mem::take(&mut host_obj.tilt_sensitivity_default) {
             quick_options_tilt_sensitivity = None;
             if let Some(stuff) = &quick_options_stuff {
@@ -985,6 +1046,9 @@ fn app_picker_inner(
     }
     if let Some(sensitivity) = quick_options_tilt_sensitivity {
         option_args.push(format!("--tilt-sensitivity={sensitivity}"));
+    }
+    if let Some(country_code) = quick_options_country_code {
+        option_args.push(format!("--country-code={country_code}"));
     }
     if quick_options_network {
         option_args.push("--allow-network-access".to_string());
@@ -1609,7 +1673,7 @@ fn change_copyright_page(
 
 enum RowKind {
     Label(&'static str),
-    Buttons(&'static [(&'static str, &'static str)]),
+    Buttons(&'static [(&'static str, &'static str)], Option<CGFloat>),
     Switch(&'static str, bool),
 }
 
@@ -1619,6 +1683,7 @@ struct QuickOptionsStuff {
     page_label: id,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
+    region_buttons: [id; 6],
     tilt_sensitivity_buttons: [id; 5],
     app_settings: AppSettingsStuff,
     page_count: usize,
@@ -1652,20 +1717,38 @@ fn setup_quick_options(
 
     let page1 = vec![
         RowKind::Label("Scale hack"),
-        RowKind::Buttons(&[
-            ("Default", "scaleHackDefault"),
-            ("Off", "scaleHack1"),
-            ("2×", "scaleHack2"),
-            ("3×", "scaleHack3"),
-            ("4×", "scaleHack4"),
-        ]),
+        RowKind::Buttons(
+            &[
+                ("Default", "scaleHackDefault"),
+                ("Off", "scaleHack1"),
+                ("2×", "scaleHack2"),
+                ("3×", "scaleHack3"),
+                ("4×", "scaleHack4"),
+            ],
+            None,
+        ),
         RowKind::Label("Orientation"),
-        RowKind::Buttons(&[
-            ("Default", "orientationDefault"),
-            ("←", "orientationLandscapeLeft"),
-            ("→", "orientationLandscapeRight"),
-            ("↓", "orientationPortraitUpsideDown"),
-        ]),
+        RowKind::Buttons(
+            &[
+                ("Default", "orientationDefault"),
+                ("←", "orientationLandscapeLeft"),
+                ("→", "orientationLandscapeRight"),
+                ("↓", "orientationPortraitUpsideDown"),
+            ],
+            None,
+        ),
+        RowKind::Label("Region"),
+        RowKind::Buttons(
+            &[
+                ("Default", "regionDefault"),
+                ("US", "regionUS"),
+                ("GB", "regionGB"),
+                ("JP", "regionJP"),
+                ("FR", "regionFR"),
+                ("DE", "regionDE"),
+            ],
+            Some(12.0),
+        ),
     ];
     let mut page2 = vec![
         RowKind::Label("Network access"),
@@ -1673,13 +1756,16 @@ fn setup_quick_options(
         RowKind::Label("Use analog sticks for tilt controls"),
         RowKind::Switch("analogStickTiltControls:", true),
         RowKind::Label("Tilt sensitivity"),
-        RowKind::Buttons(&[
-            ("Default", "tiltSensitivityDefault"),
-            ("½×", "tiltSensitivityHalf"),
-            ("¾×", "tiltSensitivityThreeQuarters"),
-            ("1½×", "tiltSensitivityOneAndAHalf"),
-            ("2×", "tiltSensitivityDouble"),
-        ]),
+        RowKind::Buttons(
+            &[
+                ("Default", "tiltSensitivityDefault"),
+                ("½×", "tiltSensitivityHalf"),
+                ("¾×", "tiltSensitivityThreeQuarters"),
+                ("1½×", "tiltSensitivityOneAndAHalf"),
+                ("2×", "tiltSensitivityDouble"),
+            ],
+            None,
+        ),
     ];
     if crate::window::Window::rotatable_fullscreen() {
         // Fullscreen option doesn't make sense on always-fullscreen platforms
@@ -1821,7 +1907,7 @@ fn setup_quick_options(
                     () = msg![env; label setTextAlignment:UITextAlignmentCenter];
                     () = msg![env; page_view addSubview:label];
                 }
-                RowKind::Buttons(buttons) => {
+                RowKind::Buttons(buttons, font_size) => {
                     button_rows.push(make_button_row(
                         env,
                         delegate,
@@ -1829,7 +1915,7 @@ fn setup_quick_options(
                         main_frame.size,
                         row_center,
                         buttons,
-                        /* font_size: */ None,
+                        font_size,
                     ));
                 }
                 RowKind::Switch(selector, default_state) => {
@@ -1943,7 +2029,8 @@ fn setup_quick_options(
         page_label,
         scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
         orientation_buttons: button_rows[1][..].try_into().unwrap(),
-        tilt_sensitivity_buttons: button_rows[2][..].try_into().unwrap(),
+        region_buttons: button_rows[2][..].try_into().unwrap(),
+        tilt_sensitivity_buttons: button_rows[3][..].try_into().unwrap(),
         app_settings: AppSettingsStuff {
             toggles,
             switches: app_settings_switches,

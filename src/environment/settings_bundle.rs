@@ -10,7 +10,7 @@
 //! `NSUserDefaults`. iOS surfaces those options in the system Settings app;
 //! touchHLE has no Settings app, so the options would be permanently
 //! unreachable. Instead, we parse the bundle ourselves and put the toggles in
-//! the app picker's Quick options panel, writing the same keys the app reads.
+//! the app picker's Settings panel, writing the same keys the app reads.
 //! That way the guest does not need to know anything about us: it just sees the
 //! preference key it asked for.
 
