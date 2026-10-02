@@ -60,6 +60,7 @@ symphonia = { version = "0.6.0", default-features = false, features = [
 ] }
 quick-xml = "0.38.4"
 digest = "0.10.7"
+aes = "0.8.4"
 md-5 = "0.10.6"
 sha1 = "0.10.6"
 encoding_rs = "0.8.35"

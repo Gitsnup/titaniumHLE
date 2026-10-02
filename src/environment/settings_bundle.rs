@@ -420,15 +420,13 @@ mod tests {
         std::fs::create_dir_all(&settings_dir).unwrap();
         std::fs::write(
             app_dir.join("Info.plist"),
-            format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 <plist version=\"1.0\"><dict>\
 <key>CFBundleIdentifier</key><string>com.touchhle.toggletest</string>\
 <key>CFBundleName</key><string>ToggleTest</string>\
 <key>CFBundleExecutable</key><string>ToggleTest</string>\
 <key>CFBundlePackageType</key><string>APPL</string>\
-</dict></plist>"
-            ),
+</dict></plist>",
         )
         .unwrap();
         std::fs::write(

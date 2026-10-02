@@ -45,7 +45,7 @@ fn make_path_and_check(
             path.last().unwrap(),
             env::consts::EXE_SUFFIX
         ));
-        println!("{}", buf.iter().last().unwrap().display())
+        println!("{}", buf.iter().next_back().unwrap().display())
     } else {
         for part in path {
             buf.push(part);
@@ -187,7 +187,7 @@ fn run_test_app(
     }
 
     build_object(
-        &tests_dir,
+        tests_dir,
         &tests_dir
             .join(format!("{}.app", test_app_name))
             .join(test_app_name),
@@ -343,7 +343,7 @@ fn test_app() -> Result<(), Box<dyn Error>> {
         // - The frameworks have bare filenames, and usually need libobjc.
         let (compile_args, out_path) =
             if let Some(framework_path) = dylib_path.strip_prefix("/System/Library/Frameworks/") {
-                extra_linker_args.push(format!("-framework"));
+                extra_linker_args.push("-framework".to_string());
                 extra_linker_args.push(dylib_name.to_string());
                 (&compile_args[..], stubs_frameworks_dir.join(framework_path))
             } else {
@@ -376,7 +376,7 @@ fn test_app() -> Result<(), Box<dyn Error>> {
                 copy_dir_all(source_headers, stub_headers)?;
             }
         }
-        build_object(&tests_dir, &out_path, [stub_src_path].iter(), &compile_args).unwrap();
+        build_object(&tests_dir, &out_path, [stub_src_path].iter(), compile_args).unwrap();
     }
 
     // Link against libstdc++ to support C++ test sources (virtual inheritance
@@ -386,7 +386,7 @@ fn test_app() -> Result<(), Box<dyn Error>> {
 
     // Vec<String> -> &[&str] ownership shenanigans
     for arg in &extra_linker_args {
-        extra_compile_args.push(&arg);
+        extra_compile_args.push(arg);
     }
 
     // Finally, build TestApp itself.

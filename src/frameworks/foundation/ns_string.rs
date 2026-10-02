@@ -119,7 +119,10 @@ impl StringHostObject {
                 StringHostObject::Utf8(Cow::Owned(string))
             }
             NSUTF8StringEncoding => {
-                let string = String::from_utf8(bytes.into_owned()).unwrap();
+                // Real iOS returns nil for invalid UTF-8, but some apps (e.g.
+                // Angry Birds) pass binary data that can contain invalid bytes;
+                // lossy conversion avoids a crash in that case.
+                let string = String::from_utf8_lossy(&bytes).into_owned();
                 StringHostObject::Utf8(Cow::Owned(string))
             }
             NSWindowsCP1252StringEncoding => {
@@ -2028,40 +2031,6 @@ fn line_range_helper(
     )
 }
 
-#[cfg(test)]
-mod ns_string_tests {
-    use super::*;
-    #[test]
-    fn linerange_tests() {
-        let range = |x, y| NSRange {
-            location: x,
-            length: y,
-        };
-        let str1: Utf16String = "abcd\nab".encode_utf16().collect();
-        assert!(line_range_helper(&str1, range(5, 1), true, true) == (5, 7, 7));
-        assert!(line_range_helper(&str1, range(4, 1), true, true) == (0, 5, 4));
-
-        let str2: Utf16String = "abc\r".encode_utf16().collect();
-        assert!(line_range_helper(&str2, range(4, 0), true, true) == (4, 4, 4));
-        assert!(line_range_helper(&str2, range(3, 1), true, true) == (0, 4, 3));
-
-        let str3: Utf16String = "abc\r\nab".encode_utf16().collect();
-        assert!(line_range_helper(&str3, range(4, 0), true, true) == (0, 5, 3));
-        assert!(line_range_helper(&str3, range(4, 1), true, true) == (0, 5, 3));
-        assert!(line_range_helper(&str3, range(6, 1), true, true) == (5, 7, 7));
-        assert!(line_range_helper(&str3, range(4, 2), true, true) == (0, 7, 7));
-
-        let str4: Utf16String = "\r\n".encode_utf16().collect();
-        assert!(line_range_helper(&str4, range(1, 0), true, true) == (0, 2, 0));
-        assert!(line_range_helper(&str4, range(1, 1), true, true) == (0, 2, 0));
-        assert!(line_range_helper(&str4, range(0, 0), true, true) == (0, 2, 0));
-
-        let str5: Utf16String = "abcd\na\n".encode_utf16().collect();
-        assert!(line_range_helper(&str5, range(6, 1), true, true) == (5, 7, 6));
-        assert!(line_range_helper(&str5, range(4, 1), true, true) == (0, 5, 4));
-    }
-}
-
 /// Helper function to get bytes of a string in the specified NSStringEncoding.
 ///
 /// `include_null_terminator` flag controls if NULL-terminator should be
@@ -2177,4 +2146,38 @@ fn string_by_replacing_occurrences_inner(
     let result_ns_string = msg_class![env; _touchHLE_NSString alloc];
     *env.objc.borrow_mut(result_ns_string) = StringHostObject::Utf16(result);
     autorelease(env, result_ns_string)
+}
+
+#[cfg(test)]
+mod ns_string_tests {
+    use super::*;
+    #[test]
+    fn linerange_tests() {
+        let range = |x, y| NSRange {
+            location: x,
+            length: y,
+        };
+        let str1: Utf16String = "abcd\nab".encode_utf16().collect();
+        assert!(line_range_helper(&str1, range(5, 1), true, true) == (5, 7, 7));
+        assert!(line_range_helper(&str1, range(4, 1), true, true) == (0, 5, 4));
+
+        let str2: Utf16String = "abc\r".encode_utf16().collect();
+        assert!(line_range_helper(&str2, range(4, 0), true, true) == (4, 4, 4));
+        assert!(line_range_helper(&str2, range(3, 1), true, true) == (0, 4, 3));
+
+        let str3: Utf16String = "abc\r\nab".encode_utf16().collect();
+        assert!(line_range_helper(&str3, range(4, 0), true, true) == (0, 5, 3));
+        assert!(line_range_helper(&str3, range(4, 1), true, true) == (0, 5, 3));
+        assert!(line_range_helper(&str3, range(6, 1), true, true) == (5, 7, 7));
+        assert!(line_range_helper(&str3, range(4, 2), true, true) == (0, 7, 7));
+
+        let str4: Utf16String = "\r\n".encode_utf16().collect();
+        assert!(line_range_helper(&str4, range(1, 0), true, true) == (0, 2, 0));
+        assert!(line_range_helper(&str4, range(1, 1), true, true) == (0, 2, 0));
+        assert!(line_range_helper(&str4, range(0, 0), true, true) == (0, 2, 0));
+
+        let str5: Utf16String = "abcd\na\n".encode_utf16().collect();
+        assert!(line_range_helper(&str5, range(6, 1), true, true) == (5, 7, 6));
+        assert!(line_range_helper(&str5, range(4, 1), true, true) == (0, 5, 4));
+    }
 }

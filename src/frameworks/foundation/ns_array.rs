@@ -185,6 +185,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this objectAtIndex:(size - 1)]
 }
 
+- (id)arrayByAddingObject:(id)object { // id (NSArray *)
+    retain(env, object);
+    let mut objects = env.objc.borrow::<ArrayHostObject>(this).array.clone();
+    objects.push(object);
+    let res = from_vec(env, objects);
+    autorelease(env, res)
+}
+
 - (id)componentsJoinedByString:(id)str { // NSString *
     let res: id = msg_class![env; NSMutableString new];
     let count: NSUInteger = msg![env; this count];

@@ -151,6 +151,8 @@ struct AppPickerDelegateHostObject {
     tilt_sensitivity_three_quarters: bool,
     tilt_sensitivity_one_and_a_half: bool,
     tilt_sensitivity_double: bool,
+    region_pulldown_toggle: bool,
+    region_pulldown_close: bool,
     region_default: bool,
     region_us: bool,
     region_gb: bool,
@@ -287,6 +289,16 @@ const CLASSES: ClassExports = objc_classes! {
 }
 - (())tiltSensitivityDouble {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).tilt_sensitivity_double = true;
+}
+- (())regionPulldownToggle {
+    env.objc
+        .borrow_mut::<AppPickerDelegateHostObject>(this)
+        .region_pulldown_toggle = true;
+}
+- (())regionPulldownClose {
+    env.objc
+        .borrow_mut::<AppPickerDelegateHostObject>(this)
+        .region_pulldown_close = true;
 }
 - (())regionDefault {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).region_default = true;
@@ -706,17 +718,53 @@ fn app_picker_inner(
         };
         update_quick_option_buttons(env, buttons, selected_idx);
     }
-    fn update_region_buttons(env: &mut Environment, buttons: &[id], value: Option<&str>) {
+    fn update_region_buttons(
+        env: &mut Environment,
+        pulldown: &RegionPulldownStuff,
+        value: Option<&str>,
+    ) {
         const REGION_CODES: [&str; 5] = ["US", "GB", "JP", "FR", "DE"];
+        const ITEM_TITLES: [&str; 6] = ["Default", "US", "GB", "JP", "FR", "DE"];
         let selected_idx = value
             .and_then(|v| REGION_CODES.iter().position(|&code| code == v))
             .map_or(0, |idx| idx + 1);
-        update_quick_option_buttons(env, buttons, selected_idx);
+        let title = format!("Region: {} \u{25BC}", ITEM_TITLES[selected_idx]);
+        let text = ns_string::from_rust_string(env, title);
+        let trigger = pulldown.trigger;
+        () = msg![env; trigger setTitle:text forState:UIControlStateNormal];
+        let background = make_frutiger_button_image(env, false);
+        () = msg![env; trigger setBackgroundImage:background
+                                       forState:UIControlStateNormal];
+        for (idx, &button) in pulldown.item_buttons.iter().enumerate() {
+            let item_title = if idx == selected_idx {
+                format!("\u{25CF} {}", ITEM_TITLES[idx])
+            } else {
+                ITEM_TITLES[idx].to_string()
+            };
+            let text = ns_string::from_rust_string(env, item_title);
+            () = msg![env; button setTitle:text forState:UIControlStateNormal];
+            let color = if idx == selected_idx {
+                // Vista glass blue for the picked region.
+                let color: id = msg_class![env; UIColor colorWithRed:(0.06 as CGFloat)
+                                                                green:(0.43 as CGFloat)
+                                                                 blue:(0.79 as CGFloat)
+                                                                alpha:(1.0 as CGFloat)];
+                color
+            } else {
+                let color: id = msg_class![env; UIColor colorWithRed:(0.10 as CGFloat)
+                                                                green:(0.17 as CGFloat)
+                                                                 blue:(0.24 as CGFloat)
+                                                                alpha:(1.0 as CGFloat)];
+                color
+            };
+            () = msg![env; button setTitleColor:color forState:UIControlStateNormal];
+        }
+        set_region_pulldown_visible(env, pulldown, false);
     }
     if let Some(stuff) = &quick_options_stuff {
         update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
         update_orientation_buttons(env, &stuff.orientation_buttons, quick_options_orientation);
-        update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+        update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
         update_tilt_sensitivity_buttons(
             env,
             &stuff.tilt_sensitivity_buttons,
@@ -810,7 +858,7 @@ fn app_picker_inner(
                     &stuff.orientation_buttons,
                     quick_options_orientation,
                 );
-                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
                 update_tilt_sensitivity_buttons(
                     env,
                     &stuff.tilt_sensitivity_buttons,
@@ -936,35 +984,43 @@ fn app_picker_inner(
                     quick_options_orientation,
                 );
             }
+        } else if std::mem::take(&mut host_obj.region_pulldown_toggle) {
+            if let Some(stuff) = &quick_options_stuff {
+                toggle_region_pulldown(env, &stuff.region_pulldown);
+            }
+        } else if std::mem::take(&mut host_obj.region_pulldown_close) {
+            if let Some(stuff) = &quick_options_stuff {
+                set_region_pulldown_visible(env, &stuff.region_pulldown, false);
+            }
         } else if std::mem::take(&mut host_obj.region_default) {
             quick_options_country_code = None;
             if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
             }
         } else if std::mem::take(&mut host_obj.region_us) {
             quick_options_country_code = Some("US");
             if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
             }
         } else if std::mem::take(&mut host_obj.region_gb) {
             quick_options_country_code = Some("GB");
             if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
             }
         } else if std::mem::take(&mut host_obj.region_jp) {
             quick_options_country_code = Some("JP");
             if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
             }
         } else if std::mem::take(&mut host_obj.region_fr) {
             quick_options_country_code = Some("FR");
             if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
             }
         } else if std::mem::take(&mut host_obj.region_de) {
             quick_options_country_code = Some("DE");
             if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_buttons, quick_options_country_code);
+                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
             }
         } else if std::mem::take(&mut host_obj.tilt_sensitivity_default) {
             quick_options_tilt_sensitivity = None;
@@ -1362,6 +1418,206 @@ fn make_frutiger_button_image(env: &mut Environment, selected: bool) -> id {
     ui_image
 }
 
+fn make_frutiger_panel_image(env: &mut Environment, width: u32, height: u32) -> id {
+    let color_space = CGColorSpaceCreateDeviceRGB(env);
+    let context = CGBitmapContextCreate(
+        env,
+        Ptr::null(),
+        width,
+        height,
+        8,
+        4 * width,
+        color_space,
+        kCGImageAlphaPremultipliedLast,
+    );
+    UIGraphicsPushContext(env, context);
+
+    // Compensate for row order inversion (y=0 becomes the top row)
+    CGContextTranslateCTM(env, context, 0.0, height as CGFloat);
+    CGContextScaleCTM(env, context, 1.0, -1.0);
+
+    // Aqua glass: pale cyan fading into deep Vista blue.
+    let (top, bottom) = ((0.72, 0.93, 1.0), (0.16, 0.46, 0.78));
+    for y in 0..height {
+        let t = y as f32 / (height - 1) as f32;
+        CGContextSetRGBFillColor(
+            env,
+            context,
+            (top.0 + (bottom.0 - top.0) * t) as CGFloat,
+            (top.1 + (bottom.1 - top.1) * t) as CGFloat,
+            (top.2 + (bottom.2 - top.2) * t) as CGFloat,
+            1.0,
+        );
+        CGContextFillRect(
+            env,
+            context,
+            CGRect {
+                origin: CGPoint {
+                    x: 0.0,
+                    y: y as CGFloat,
+                },
+                size: CGSize {
+                    width: width as CGFloat,
+                    height: 1.0,
+                },
+            },
+        );
+    }
+    // The classic glass sheen: a white fade across the top half.
+    let sheen_height = height / 2;
+    for y in 0..sheen_height {
+        let t = y as f32 / sheen_height as f32;
+        let alpha = 0.5 * (1.0 - t) + 0.05;
+        CGContextSetRGBFillColor(env, context, 1.0, 1.0, 1.0, alpha as CGFloat);
+        CGContextFillRect(
+            env,
+            context,
+            CGRect {
+                origin: CGPoint {
+                    x: 0.0,
+                    y: y as CGFloat,
+                },
+                size: CGSize {
+                    width: width as CGFloat,
+                    height: 1.0,
+                },
+            },
+        );
+    }
+
+    UIGraphicsPopContext(env);
+
+    let cg_image = CGBitmapContextCreateImage(env, context);
+    cg_image::borrow_image_mut(&mut env.objc, cg_image).round_corners(
+        10.0, /* four_corners: */ true, /* add_sheen: */ false,
+    );
+    CGContextRelease(env, context);
+
+    let ui_image: id = msg_class![env; UIImage imageWithCGImage:cg_image];
+    release(env, cg_image);
+
+    ui_image
+}
+
+fn make_region_pulldown(
+    env: &mut Environment,
+    delegate: id,
+    super_view: id,
+    super_frame: CGRect,
+    trigger: id,
+    nav_height: CGFloat,
+) -> RegionPulldownStuff {
+    let item_height: CGFloat = 30.0;
+    let gap: CGFloat = 2.0;
+    let padding: CGFloat = 8.0;
+    let panel_width: CGFloat = 170.0;
+    let panel_height = (REGION_ITEM_TITLES.len() as CGFloat) * item_height
+        + padding * 2.0
+        + (REGION_ITEM_TITLES.len() as CGFloat - 1.0) * gap;
+
+    // An invisible full-screen button that closes the pulldown when the user
+    // taps outside of it.
+    let scrim: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+    let scrim_frame = CGRect {
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: super_frame.size,
+    };
+    () = msg![env; scrim setFrame:scrim_frame];
+    let close_selector = env.objc.lookup_selector("regionPulldownClose").unwrap();
+    () = msg![env; scrim addTarget:delegate
+                             action:close_selector
+                   forControlEvents:UIControlEventTouchUpInside];
+    () = msg![env; super_view addSubview:scrim];
+
+    // Position the panel just below the trigger, or above it if there's no
+    // room left. The trigger lives in a page view that fills the whole
+    // panel, so its frame matches this coordinate space.
+    let trigger_frame: CGRect = msg![env; trigger frame];
+    let below = trigger_frame.origin.y + trigger_frame.size.height + 4.0;
+    let y = if below + panel_height <= super_frame.size.height - nav_height {
+        below
+    } else {
+        trigger_frame.origin.y - panel_height - 4.0
+    };
+    let panel_frame = CGRect {
+        origin: CGPoint {
+            x: (super_frame.size.width - panel_width) / 2.0,
+            y,
+        },
+        size: CGSize {
+            width: panel_width,
+            height: panel_height,
+        },
+    };
+
+    // A plain UIView, NOT a UIButton: UIButton routes all touches straight
+    // to itself, which would stop the item buttons from ever being tapped.
+    let panel: id = msg_class![env; UIView alloc];
+    let panel: id = msg![env; panel initWithFrame:panel_frame];
+    let panel_image = make_frutiger_panel_image(env, panel_width as u32, panel_height as u32);
+    let panel_image_view: id = msg_class![env; UIImageView alloc];
+    let panel_image_view: id = msg![env; panel_image_view initWithImage:panel_image];
+    release(env, panel_image);
+    // Let touches fall through to the item buttons.
+    () = msg![env; panel_image_view setUserInteractionEnabled:false];
+    () = msg![env; panel addSubview:panel_image_view];
+    () = msg![env; panel setHidden:true];
+    () = msg![env; super_view addSubview:panel];
+
+    let mut item_buttons = Vec::new();
+    for (idx, &title) in REGION_ITEM_TITLES.iter().enumerate() {
+        let item_frame = CGRect {
+            origin: CGPoint {
+                x: padding,
+                y: padding + (idx as CGFloat) * (item_height + gap),
+            },
+            size: CGSize {
+                width: panel_width - padding * 2.0,
+                height: item_height,
+            },
+        };
+        let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+        let text = ns_string::get_static_str(env, title);
+        () = msg![env; button setTitle:text forState:UIControlStateNormal];
+        () = msg![env; button setFrame:item_frame];
+        // FIXME: manually calling layoutSubviews shouldn't be needed?
+        () = msg![env; button layoutSubviews];
+        let selector = env
+            .objc
+            .lookup_selector(REGION_ITEM_SELECTORS[idx])
+            .unwrap();
+        () = msg![env; button addTarget:delegate
+                                 action:selector
+                       forControlEvents:UIControlEventTouchUpInside];
+        () = msg![env; panel addSubview:button];
+        item_buttons.push(button);
+    }
+
+    RegionPulldownStuff {
+        trigger,
+        scrim,
+        panel,
+        item_buttons,
+    }
+}
+
+fn set_region_pulldown_visible(
+    env: &mut Environment,
+    pulldown: &RegionPulldownStuff,
+    visible: bool,
+) {
+    let scrim = pulldown.scrim;
+    let panel = pulldown.panel;
+    () = msg![env; scrim setHidden:(!visible)];
+    () = msg![env; panel setHidden:(!visible)];
+}
+
+fn toggle_region_pulldown(env: &mut Environment, pulldown: &RegionPulldownStuff) {
+    let panel = pulldown.panel;
+    let hidden: bool = msg![env; panel isHidden];
+    set_region_pulldown_visible(env, pulldown, hidden);
+}
+
 fn update_icon_grid(
     env: &mut Environment,
     icon_grid_stuff: &mut IconGridStuff,
@@ -1687,13 +1943,30 @@ enum RowKind {
     Switch(&'static str, bool),
 }
 
+const REGION_ITEM_TITLES: [&str; 6] = ["Default", "US", "GB", "JP", "FR", "DE"];
+const REGION_ITEM_SELECTORS: [&str; 6] = [
+    "regionDefault",
+    "regionUS",
+    "regionGB",
+    "regionJP",
+    "regionFR",
+    "regionDE",
+];
+
+struct RegionPulldownStuff {
+    trigger: id,
+    scrim: id,
+    panel: id,
+    item_buttons: Vec<id>,
+}
+
 struct QuickOptionsStuff {
     main_view: id,
     page_views: Vec<id>,
     page_label: id,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
-    region_buttons: [id; 6],
+    region_pulldown: RegionPulldownStuff,
     tilt_sensitivity_buttons: [id; 5],
     app_settings: AppSettingsStuff,
     page_count: usize,
@@ -1747,17 +2020,9 @@ fn setup_quick_options(
             ],
             None,
         ),
-        RowKind::Label("Region"),
         RowKind::Buttons(
-            &[
-                ("Default", "regionDefault"),
-                ("US", "regionUS"),
-                ("GB", "regionGB"),
-                ("JP", "regionJP"),
-                ("FR", "regionFR"),
-                ("DE", "regionDE"),
-            ],
-            Some(12.0),
+            &[("Region: Default \u{25BC}", "regionPulldownToggle")],
+            Some(16.0),
         ),
     ];
     let mut page2 = vec![
@@ -2039,7 +2304,14 @@ fn setup_quick_options(
         page_label,
         scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
         orientation_buttons: button_rows[1][..].try_into().unwrap(),
-        region_buttons: button_rows[2][..].try_into().unwrap(),
+        region_pulldown: make_region_pulldown(
+            env,
+            delegate,
+            main_view,
+            main_frame,
+            button_rows[2][0],
+            nav_height,
+        ),
         tilt_sensitivity_buttons: button_rows[3][..].try_into().unwrap(),
         app_settings: AppSettingsStuff {
             toggles,
