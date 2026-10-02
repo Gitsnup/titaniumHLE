@@ -1049,6 +1049,16 @@ fn app_picker_inner(
     }
     if let Some(country_code) = quick_options_country_code {
         option_args.push(format!("--country-code={country_code}"));
+        // Apps often localize by language rather than country, so a region
+        // pick also implies the matching preferred language.
+        let language = match country_code {
+            "GB" | "US" => "en",
+            "JP" => "ja",
+            "FR" => "fr",
+            "DE" => "de",
+            _ => unreachable!(),
+        };
+        option_args.push(format!("--preferred-languages={language}"));
     }
     if quick_options_network {
         option_args.push("--allow-network-access".to_string());

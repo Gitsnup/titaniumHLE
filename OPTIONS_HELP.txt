@@ -115,6 +115,9 @@ Game controller options:
         the same stick movement produce twice as much simulated tilt, while a
         value of 0 makes stick movement have no effect on tilt.
 
+        On devices with a real accelerometer (e.g. phones and tablets), this
+        scales the tilt angle measured by that sensor instead.
+
         This is a floating-point (decimal) number between 0 and 10. The default
         value is 1.
 
@@ -260,6 +263,9 @@ Other options:
 
         This should be an ISO 3166-1 alpha-2 country code (two letters), for
         example --country-code=JP for Japan. Letter case is ignored.
+
+        Note that many apps localize their content based on language rather
+        than region, in which case --preferred-languages= also matters.
 
         If this option is not specified, the country code comes from your
         operating system's region settings, or "US" if none could be

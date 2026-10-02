@@ -17,7 +17,8 @@ Changes are categorised as follows:
 
 Usability:
 
-- Added a tilt sensitivity setting to the Quick options panel in the app picker, plus a `--tilt-sensitivity=` command-line option. This scales the simulated rotation range for tilt controls without changing the neutral position.
+- Added a tilt sensitivity setting to the Quick options panel in the app picker, plus a `--tilt-sensitivity=` command-line option. This scales the rotation range for tilt controls without changing the neutral position, and also applies to real accelerometer input on devices that have one.
+- Added a region setting to page 1 of the Quick options panel in the app picker (whose menu entry is now renamed to "Settings"). The picked region is reported to the app as its country code, and also implies the matching preferred language, since many apps (e.g. JellyCar) localize by language rather than region.
 
 ## v0.3.0 (2026-10-01)
 

@@ -982,7 +982,22 @@ impl Window {
                 // SDL2 reports acceleration in units of m/s^2.
                 let gravity: f32 = 9.80665; // SDL_STANDARD_GRAVITY
                 let (x, y, z) = (x / gravity, y / gravity, z / gravity);
-                return (x, y, z);
+
+                // Apply tilt sensitivity (and neutral tilt offsets) by
+                // decomposing the measured gravity direction into rotations
+                // about the x and y axes, scaling the deviations from the
+                // neutral pose, and reconstructing the direction. With the
+                // default sensitivity of 1.0 this is an identity transform.
+                let x_rotation = (y.clamp(-1.0, 1.0)).asin();
+                let y_rotation = (-x).atan2(-z);
+                let neutral_x = options.x_tilt_offset.to_radians();
+                let neutral_y = options.y_tilt_offset.to_radians();
+                let sensitivity = options.tilt_sensitivity;
+                let x_rotation = neutral_x + (x_rotation - neutral_x) * sensitivity;
+                let y_rotation = neutral_y + (y_rotation - neutral_y) * sensitivity;
+                let (sin_x, cos_x) = x_rotation.sin_cos();
+                let (sin_y, cos_y) = y_rotation.sin_cos();
+                return (-sin_y * cos_x, sin_x, -cos_x * cos_y);
             }
         }
 
