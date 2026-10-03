@@ -295,6 +295,28 @@ fn strncat(env: &mut Environment, s1: MutPtr<u8>, s2: ConstPtr<u8>, n: GuestUSiz
 fn strstr(env: &mut Environment, string: ConstPtr<u8>, substring: ConstPtr<u8>) -> ConstPtr<u8> {
     GenericChar::<u8>::strstr(env, string, substring)
 }
+fn strcasestr(env: &mut Environment, haystack: ConstPtr<u8>, needle: ConstPtr<u8>) -> ConstPtr<u8> {
+    // TODO: generalize to wide chars
+    let mut haystack_offset = 0;
+    loop {
+        if env.mem.read(haystack + haystack_offset) == 0 {
+            return Ptr::null().cast_const();
+        }
+        let mut needle_offset = 0;
+        loop {
+            let needle_char = env.mem.read(needle + needle_offset);
+            if needle_char == 0 {
+                return (haystack + haystack_offset).cast();
+            }
+            let haystack_char = env.mem.read(haystack + haystack_offset + needle_offset);
+            if needle_char.to_ascii_lowercase() != haystack_char.to_ascii_lowercase() {
+                break;
+            }
+            needle_offset += 1;
+        }
+        haystack_offset += 1;
+    }
+}
 fn strchr(env: &mut Environment, path: ConstPtr<u8>, c: u8) -> ConstPtr<u8> {
     GenericChar::<u8>::strchr(env, path, c)
 }
@@ -345,6 +367,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(strncasecmp(_, _, _)),
     export_c_func!(strncat(_, _, _)),
     export_c_func!(strstr(_, _)),
+    export_c_func!(strcasestr(_, _)),
     export_c_func!(strchr(_, _)),
     export_c_func!(strrchr(_, _)),
     export_c_func!(strpbrk(_, _)),

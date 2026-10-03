@@ -22,6 +22,8 @@ use std::ffi::{c_int, c_uchar, CStr};
 use touchHLE_pvrt_decompress_wrapper::*;
 use touchHLE_stb_image_wrapper::*;
 
+pub mod png_encode;
+
 pub struct Image {
     pixels: PixelStore,
     dimensions: (u32, u32),

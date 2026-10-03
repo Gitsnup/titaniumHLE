@@ -152,6 +152,11 @@ fn open(env: &mut Environment, path: ConstPtr<u8>, flags: i32, _args: DotDotDot)
     self::open_direct(env, path, flags)
 }
 
+fn creat(env: &mut Environment, path: ConstPtr<u8>, _mode: u32) -> FileDescriptor {
+    // TODO: respect the mode when creating the file
+    open_direct(env, path, O_WRONLY | O_CREAT | O_TRUNC)
+}
+
 /// Special extension for host code: [open] without the [DotDotDot].
 pub fn open_direct(env: &mut Environment, path: ConstPtr<u8>, flags: i32) -> FileDescriptor {
     // TODO: support more flags, this list is not complete
@@ -949,6 +954,7 @@ fn truncate(env: &mut Environment, path_ptr: ConstPtr<u8>, len: off_t) -> i32 {
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(open(_, _, _)),
+    export_c_func!(creat(_, _)),
     export_c_func!(read(_, _, _)),
     export_c_func!(pread(_, _, _, _)),
     export_c_func!(write(_, _, _)),

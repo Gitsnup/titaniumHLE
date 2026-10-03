@@ -35,6 +35,7 @@ pub mod ns_index_path;
 pub mod ns_invocation;
 pub mod ns_keyed_archiver;
 pub mod ns_keyed_unarchiver;
+pub mod ns_http_cookie;
 pub mod ns_locale;
 pub mod ns_lock;
 pub mod ns_log;
@@ -110,6 +111,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     ],
     constant_exports: &[
         ns_error::CONSTANTS,
+        ns_http_cookie::CONSTANTS,
         ns_exception::CONSTANTS,
         ns_file_manager::CONSTANTS,
         ns_keyed_unarchiver::CONSTANTS,

@@ -1040,6 +1040,7 @@ dependencies = [
  "cc",
  "cmake",
  "corosensei",
+ "crc32fast",
  "digest",
  "encoding_rs",
  "flate2",

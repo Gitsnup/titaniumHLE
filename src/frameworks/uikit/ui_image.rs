@@ -5,6 +5,7 @@
  */
 //! `UIImage`.
 
+use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_graphics::cg_context::CGContextDrawImage;
 use crate::frameworks::core_graphics::cg_image::{
     self, CGImageGetHeight, CGImageGetWidth, CGImageRef, CGImageRelease, CGImageRetain,
@@ -14,7 +15,8 @@ use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::frameworks::foundation::{ns_data, ns_string, NSInteger};
 use crate::frameworks::uikit::ui_graphics::UIGraphicsGetCurrentContext;
 use crate::fs::GuestPath;
-use crate::image::Image;
+use crate::image::{png_encode, Image};
+use crate::mem::{GuestUSize, MutVoidPtr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
     NSZonePtr,
@@ -217,3 +219,22 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+/// `UIImagePNGRepresentation`: returns an `NSData` containing the image as a
+/// PNG, or nil on failure. Used by apps that upload screenshots etc.
+fn UIImagePNGRepresentation(env: &mut Environment, image: id) -> id {
+    let cg_image = env.objc.borrow::<UIImageHostObject>(image).cg_image;
+    let png_bytes = {
+        let img = cg_image::borrow_image(&env.objc, cg_image);
+        png_encode::encode_png(img)
+    };
+    let len: GuestUSize = png_bytes.len().try_into().unwrap();
+    let buffer: MutVoidPtr = env.mem.alloc(len).cast();
+    env.mem
+        .bytes_at_mut(buffer.cast(), png_bytes.len() as u32)
+        .copy_from_slice(&png_bytes);
+    let data: id = msg_class![env; NSData dataWithBytesNoCopy:buffer length:len];
+    autorelease(env, data)
+}
+
+pub const FUNCTIONS: FunctionExports = &[export_c_func!(UIImagePNGRepresentation(_))];

@@ -180,14 +180,17 @@ fn _touchHLE_CFDictionary_hash(env: &mut Environment, value: ConstVoidPtr) -> CF
     CFHash(env, value.cast_mut().cast())
 }
 
-struct DefaultCallbackFunctions {
-    retain: GuestFunction,
-    release: GuestFunction,
-    copy_desc: GuestFunction,
-    equal: GuestFunction,
-    hash: GuestFunction,
+pub(super) struct DefaultCallbackFunctions {
+    pub(super) retain: GuestFunction,
+    pub(super) release: GuestFunction,
+    pub(super) copy_desc: GuestFunction,
+    pub(super) equal: GuestFunction,
+    pub(super) hash: GuestFunction,
 }
-fn create_default_callback_functions(mem: &mut Mem, dyld: &mut Dyld) -> DefaultCallbackFunctions {
+pub(super) fn create_default_callback_functions(
+    mem: &mut Mem,
+    dyld: &mut Dyld,
+) -> DefaultCallbackFunctions {
     let retain_sym = "__touchHLE_CFDictionary_retain";
     let retain_hf: HostFunction =
         &(_touchHLE_CFDictionary_retain as fn(&mut Environment, _, _) -> _);
