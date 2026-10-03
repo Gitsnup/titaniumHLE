@@ -7,7 +7,8 @@
 
 use super::cg_affine_transform::{CGAffineTransform, CGAffineTransformIdentity};
 use super::cg_color_space::{
-    kCGColorSpaceGenericGray, kCGColorSpaceGenericRGB, CGColorSpaceHostObject, CGColorSpaceRef,
+    kCGColorSpaceGenericGray, kCGColorSpaceGenericRGB, kCGColorSpaceModelRGB,
+    CGColorSpaceHostObject, CGColorSpaceRef,
 };
 use super::cg_context::{
     kCGBlendModeCopy, kCGBlendModeDarken, kCGBlendModeLighten, kCGBlendModeMultiply,
@@ -86,6 +87,12 @@ pub fn CGBitmapContextCreate(
         }),
         // TODO: is this the correct default?
         rgb_fill_color: (0.0, 0.0, 0.0, 0.0),
+        rgb_stroke_color: (0.0, 0.0, 0.0, 1.0),
+        fill_color_space_model: kCGColorSpaceModelRGB,
+        stroke_color_space_model: kCGColorSpaceModelRGB,
+        line_width: 1.0,
+        path: Vec::new(),
+        path_current_point: None,
         font: Ptr::null(),
         font_size: 14.0,
         transform: CGAffineTransformIdentity,
@@ -412,6 +419,7 @@ fn put_pixel(
 pub struct CGBitmapContextDrawer<'a> {
     bitmap_info: CGBitmapContextData,
     rgb_fill_color: (CGFloat, CGFloat, CGFloat, CGFloat),
+    rgb_stroke_color: (CGFloat, CGFloat, CGFloat, CGFloat),
     blend_mode: CGBlendMode,
     transform: CGAffineTransform,
     pixels: &'a mut [u8],
@@ -425,6 +433,7 @@ impl CGBitmapContextDrawer<'_> {
         let &CGContextHostObject {
             subclass: CGContextSubclass::CGBitmapContext(bitmap_info),
             rgb_fill_color,
+            rgb_stroke_color,
             transform,
             blend_mode,
             ..
@@ -435,6 +444,7 @@ impl CGBitmapContextDrawer<'_> {
         CGBitmapContextDrawer {
             bitmap_info,
             rgb_fill_color,
+            rgb_stroke_color,
             blend_mode,
             transform,
             pixels,
@@ -462,6 +472,22 @@ impl CGBitmapContextDrawer<'_> {
             gamma_decode(self.rgb_fill_color.1 * multiply_by),
             gamma_decode(self.rgb_fill_color.2 * multiply_by),
             self.rgb_fill_color.3, // alpha is always linear
+        )
+    }
+    /// Get the current stroke color. The returned color is linear RGB, not
+    /// sRGB. It has premultiplied alpha if the context does.
+    pub fn rgb_stroke_color(&self) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
+        let multiply_by = match self.bitmap_info.alpha_info {
+            kCGImageAlphaPremultipliedLast | kCGImageAlphaPremultipliedFirst => {
+                self.rgb_stroke_color.3
+            }
+            _ => 1.0,
+        };
+        (
+            gamma_decode(self.rgb_stroke_color.0 * multiply_by),
+            gamma_decode(self.rgb_stroke_color.1 * multiply_by),
+            gamma_decode(self.rgb_stroke_color.2 * multiply_by),
+            self.rgb_stroke_color.3, // alpha is always linear
         )
     }
     /// Set the pixel at `coords` to `color`. `color` must be linear RGB, not
@@ -550,6 +576,7 @@ fn test_iter_transformed_pixels() {
                 alpha_info: 0,
             },
             rgb_fill_color: (0.0, 0.0, 0.0, 0.0),
+            rgb_stroke_color: (0.0, 0.0, 0.0, 1.0),
             blend_mode: kCGBlendModeNormal,
             transform,
             pixels: &mut [],

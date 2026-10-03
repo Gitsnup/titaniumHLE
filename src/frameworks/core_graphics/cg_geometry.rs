@@ -353,6 +353,12 @@ pub const CGRectNull: CGRect = CGRect {
 fn CGRectIsNull(_env: &mut Environment, rect: CGRect) -> bool {
     rect == CGRectNull
 }
+fn CGRectIsEmpty(_env: &mut Environment, rect: CGRect) -> bool {
+    // A rectangle is considered empty if its width or height is zero or
+    // negative (and a null rectangle is empty too).
+    // https://developer.apple.com/documentation/coregraphics/cgrect/1454910-isempty
+    rect.size.width <= 0.0 || rect.size.height <= 0.0
+}
 
 fn CGRectOffset(_env: &mut Environment, rect: CGRect, dx: CGFloat, dy: CGFloat) -> CGRect {
     assert!(rect != CGRectNull); // TODO
@@ -424,6 +430,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGRectGetWidth(_)),
     export_c_func!(CGRectMake(_, _, _, _)),
     export_c_func!(CGRectIsNull(_)),
+    export_c_func!(CGRectIsEmpty(_)),
     export_c_func!(CGRectOffset(_, _, _)),
     export_c_func!(CGRectInset(_, _, _)),
     export_c_func!(CGRectIntegral(_)),
