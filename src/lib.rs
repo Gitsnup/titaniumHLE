@@ -28,6 +28,7 @@
 #[macro_use]
 mod log;
 mod abi;
+mod arm64;
 mod audio;
 mod bundle;
 mod cpu;
@@ -263,25 +264,46 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     );
     echo!();
 
-    if let Some(version) = minimum_os_version {
-        let (major, minor_etc) = version.split_once('.').unwrap();
-        let minor = minor_etc
-            .split_once('.')
-            .map_or(minor_etc, |(minor, _etc)| minor);
-        let major: u32 = major.parse().unwrap();
-        let minor: u32 = minor.parse().unwrap();
-        if major > 4 || (major == 4 && minor > 0) {
-            echo!("Warning: app requires OS version {}. Only apps for iOS 4.0 and earlier are currently supported.", version);
+    // Experimental ARM64 app support: detect 64-bit ARM executables and run
+    // them with the ARM64 interpreter instead of the 32-bit pipeline. See
+    // `src/arm64.rs`. ARM64 support is possible, but very experimental.
+    let is_arm64 = {
+        let executable_bytes = fs
+            .read(bundle.executable_path())
+            .map_err(|_| "Could not read executable file".to_string())?;
+        arm64::detect_arm64_executable(&executable_bytes)
+    };
+    if is_arm64 {
+        echo!("This app is an ARM64 (64-bit) binary; it will run in the experimental ARM64 interpreter.");
+    }
+
+    if !is_arm64 {
+        if let Some(version) = minimum_os_version {
+            let (major, minor_etc) = version.split_once('.').unwrap();
+            let minor = minor_etc
+                .split_once('.')
+                .map_or(minor_etc, |(minor, _etc)| minor);
+            let major: u32 = major.parse().unwrap();
+            let minor: u32 = minor.parse().unwrap();
+            if major > 4 || (major == 4 && minor > 0) {
+                echo!("Warning: app requires OS version {}. Only apps for iOS 4.0 and earlier are currently supported.", version);
+            }
+        }
+
+        if required_device_capabilities.contains(&"opengles-2")
+            || required_device_capabilities.contains(&"opengles-3")
+        {
+            echo!("Warning: app requires OpenGL ES 2.0+ support. Only OpenGL ES 1.1 is currently supported.");
         }
     }
 
-    if required_device_capabilities.contains(&"opengles-2")
-        || required_device_capabilities.contains(&"opengles-3")
-    {
-        echo!("Warning: app requires OpenGL ES 2.0+ support. Only OpenGL ES 1.1 is currently supported.");
+    if just_info {
+        return Ok(());
     }
 
-    if just_info {
+    if is_arm64 {
+        let status = arm64::run_arm64_app(&bundle, &fs)?;
+        echo!("ARM64 app exited with status {status}");
         return Ok(());
     }
 

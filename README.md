@@ -8,7 +8,7 @@ The goal of this fork is the same as upstream — to run games from the early da
 
 * Currently: iPhone, iPod touch and iPad apps for iPhone OS 2.x, iPhone OS 3.x, and iOS 4.0.x.
 * Longer term: high-DPI (“Retina Display”) support, newer iOS 4 versions, iOS 5.x, iOS 6.x.
-* [Never](https://github.com/touchHLE/touchHLE/issues/181#issuecomment-1777098259): 64-bit iOS.
+* 64-bit iOS (ARM64): possible, but very experimental. Upstream has ruled it out [as a goal](https://github.com/touchHLE/touchHLE/issues/181#issuecomment-1777098259), and this fork keeps the dynarmic A32 pipeline for real apps; a separate, minimal ARM64 interpreter (`src/arm64.rs`) exists for simple 64-bit binaries and is under active development. Full 64-bit HLE (UIKit, OpenGL ES, etc. for ARM64) is not implemented.
 
 **This does not mean that all apps for these OS versions work.** The vast majority of iPhone OS 2.x and iPhone OS 3.x apps do not currently work in titaniumHLE, and the ones that do work are generally games (support for other apps isn't a priority: it's more complex and less fun). This improves gradually over time. The upstream [touchHLE app compatibility database](https://appdb.touchhle.org/) is still a useful reference for which apps are known to work.
 
