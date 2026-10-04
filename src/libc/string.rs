@@ -240,6 +240,11 @@ pub(crate) fn strdup(env: &mut Environment, src: ConstPtr<u8>) -> MutPtr<u8> {
 pub fn strcmp(env: &mut Environment, a: ConstPtr<u8>, b: ConstPtr<u8>) -> i32 {
     GenericChar::<u8>::strcmp(env, a, b)
 }
+fn strcoll(env: &mut Environment, a: ConstPtr<u8>, b: ConstPtr<u8>) -> i32 {
+    // The emulator currently exposes the C locale, whose collation order is
+    // the unsigned-byte lexicographic order used by strcmp().
+    strcmp(env, a, b)
+}
 fn strncmp(env: &mut Environment, a: ConstPtr<u8>, b: ConstPtr<u8>, n: GuestUSize) -> i32 {
     GenericChar::<u8>::strncmp(env, a, b, n)
 }
@@ -340,6 +345,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(strsep(_, _)),
     export_c_func!(strdup(_)),
     export_c_func!(strcmp(_, _)),
+    export_c_func!(strcoll(_, _)),
     export_c_func!(strncmp(_, _, _)),
     export_c_func!(strcasecmp(_, _)),
     export_c_func!(strncasecmp(_, _, _)),
