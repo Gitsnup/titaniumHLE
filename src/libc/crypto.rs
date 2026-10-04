@@ -97,13 +97,18 @@ fn CCCrypt(
     data_out_available: GuestUSize,
     data_out_moved: MutPtr<GuestUSize>,
 ) -> i32 {
+    let write_data_out_moved = |env: &mut Environment, value: GuestUSize| {
+        if !data_out_moved.is_null() {
+            env.mem.write(data_out_moved, value);
+        }
+    };
     if alg != K_CC_ALG_AES || (key_length != 16 && key_length != 24 && key_length != 32) {
         log!(
             "TODO: CCCrypt with unsupported algorithm ({}) or key size ({})",
             alg,
             key_length
         );
-        env.mem.write(data_out_moved, 0);
+        write_data_out_moved(env, 0);
         return K_CC_PARAM_ERROR;
     }
     let ecb_mode = options & K_CC_OPT_ECB_MODE != 0;
@@ -131,14 +136,18 @@ fn CCCrypt(
     };
     if !data_in_length.is_multiple_of(K_CC_BLOCK_SIZE) && (options & K_CC_OPT_PKCS7_PADDING) == 0 {
         log!("TODO: CCCrypt with unaligned input and no padding");
-        env.mem.write(data_out_moved, 0);
+        write_data_out_moved(env, 0);
         return K_CC_ALIGNMENT_ERROR;
     }
 
     let key = env.mem.bytes_at(key.cast(), key_length).to_vec();
     let cipher = AesMode::new(&key).unwrap();
     let encrypting = op != K_CC_OP_DECRYPT;
-    let mut data = env.mem.bytes_at(data_in.cast(), data_in_length).to_vec();
+    let mut data = if data_in_length == 0 {
+        Vec::new()
+    } else {
+        env.mem.bytes_at(data_in.cast(), data_in_length).to_vec()
+    };
 
     // Add PKCS#7 padding for encryption.
     if encrypting && options & K_CC_OPT_PKCS7_PADDING != 0 {
@@ -147,13 +156,13 @@ fn CCCrypt(
     }
     if !data.len().is_multiple_of(16) {
         // Can only happen if padding wasn't applied, i.e. decrypting.
-        env.mem.write(data_out_moved, 0);
+        write_data_out_moved(env, 0);
         return K_CC_ALIGNMENT_ERROR;
     }
 
     // The output is never longer than the padded input.
     if data.len() > data_out_available as usize {
-        env.mem.write(data_out_moved, 0);
+        write_data_out_moved(env, 0);
         return K_CC_BUFFER_TOO_SMALL;
     }
     for block in data.chunks_mut(K_CC_BLOCK_SIZE as usize) {
@@ -180,18 +189,29 @@ fn CCCrypt(
 
     let mut out_len: u32 = data.len() as u32;
     if !encrypting && options & K_CC_OPT_PKCS7_PADDING != 0 {
+        if data.is_empty() {
+            log!("TODO: CCCrypt decrypt requested with empty padded input");
+            write_data_out_moved(env, 0);
+            return K_CC_DECODE_ERROR;
+        }
         let padding = data[data.len() - 1];
         if padding == 0 || padding as u32 > K_CC_BLOCK_SIZE {
             log!("TODO: CCCrypt with invalid PKCS#7 padding");
-            env.mem.write(data_out_moved, 0);
+            write_data_out_moved(env, 0);
             return K_CC_DECODE_ERROR;
         }
         out_len -= padding as u32;
     }
-    env.mem
-        .bytes_at_mut(data_out.cast(), out_len)
-        .copy_from_slice(&data[..out_len as usize]);
-    env.mem.write(data_out_moved, out_len);
+    if out_len != 0 && data_out.is_null() {
+        write_data_out_moved(env, 0);
+        return K_CC_PARAM_ERROR;
+    }
+    if out_len != 0 {
+        env.mem
+            .bytes_at_mut(data_out.cast(), out_len)
+            .copy_from_slice(&data[..out_len as usize]);
+    }
+    write_data_out_moved(env, out_len);
     K_CC_SUCCESS
 }
 
