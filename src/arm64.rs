@@ -17,7 +17,15 @@ pub struct Cpu {
 
 impl Cpu {
     pub fn new() -> Cpu {
-        Cpu { x: [0; 31], sp: 0, pc: 0, n: false, z: false, c: false, v: false }
+        Cpu {
+            x: [0; 31],
+            sp: 0,
+            pc: 0,
+            n: false,
+            z: false,
+            c: false,
+            v: false,
+        }
     }
 }
 
@@ -123,7 +131,10 @@ fn decode_bitmask_imm(insn: u32) -> Option<u64> {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum RegWidth { W, X }
+enum RegWidth {
+    W,
+    X,
+}
 
 impl Cpu {
     fn read_reg(&self, i: u32, width: RegWidth) -> u64 {
@@ -179,7 +190,15 @@ impl Cpu {
         }
     }
 
-    fn set_flags(&mut self, a: u64, b: u64, result: u64, carry_out: u64, subtract: bool, width_bits: u32) {
+    fn set_flags(
+        &mut self,
+        a: u64,
+        b: u64,
+        result: u64,
+        carry_out: u64,
+        subtract: bool,
+        width_bits: u32,
+    ) {
         let sign_bit = 1u64 << (width_bits - 1);
         self.n = (result & sign_bit) != 0;
         self.z = result == 0;
@@ -218,11 +237,17 @@ pub fn run(
             return Ok(cpu.x[0]);
         }
         if cpu.pc > u32::MAX as u64 {
-            return Err(format!("PC out of 32-bit guest address space: {:#x}", cpu.pc));
+            return Err(format!(
+                "PC out of 32-bit guest address space: {:#x}",
+                cpu.pc
+            ));
         }
         if let Some(limit) = max_steps {
             if steps >= limit {
-                return Err(format!("instruction limit ({limit}) reached at PC {:#x}", cpu.pc));
+                return Err(format!(
+                    "instruction limit ({limit}) reached at PC {:#x}",
+                    cpu.pc
+                ));
             }
         }
         steps += 1;
@@ -272,8 +297,7 @@ pub fn run(
                 0b11 => {
                     // MOVK
                     let old = cpu.read_sp_or_reg(rd, width);
-                    let mask = !(0xffffu64 << shift)
-                        & if sf == 1 { u64::MAX } else { 0xffff_ffff };
+                    let mask = !(0xffffu64 << shift) & if sf == 1 { u64::MAX } else { 0xffff_ffff };
                     let value = (old & mask) | (imm16 << shift);
                     cpu.write_sp_or_reg(rd, value, width, sf == 1);
                 }
@@ -320,7 +344,11 @@ pub fn run(
             let rd = field(insn, 4, 0);
             let width_bits = if sf == 1 { 64 } else { 32 };
             let width = if sf == 1 { RegWidth::X } else { RegWidth::W };
-            let a = if rn == 31 && !set_flags { cpu.sp } else { cpu.read_reg(rn, width) };
+            let a = if rn == 31 && !set_flags {
+                cpu.sp
+            } else {
+                cpu.read_reg(rn, width)
+            };
             let mut b = cpu.read_reg(rm, width);
             b = match shift_kind {
                 0b00 => b << imm6,
@@ -389,8 +417,7 @@ pub fn run(
         else if field(insn, 28, 23) == 0b100100 {
             let sf = field(insn, 31, 31);
             let opc = field(insn, 30, 29);
-            let imm = decode_bitmask_imm(insn)
-                .ok_or_else(|| unimplemented_insn(insn, old_pc))?;
+            let imm = decode_bitmask_imm(insn).ok_or_else(|| unimplemented_insn(insn, old_pc))?;
             let rn = field(insn, 9, 5);
             let rd = field(insn, 4, 0);
             let width_bits = if sf == 1 { 64 } else { 32 };
@@ -481,13 +508,8 @@ pub fn run(
             cpu.write_reg(30, old_pc + 4, RegWidth::X);
             branch_to!(target);
         }
-        // BR.
-        else if insn & 0xffff_fc1f == 0xd61f_0000 {
-            let rn = field(insn, 9, 5);
-            branch_to!(cpu.read_reg(rn, RegWidth::X));
-        }
-        // RET.
-        else if insn & 0xffff_fc1f == 0xd65f_0000 {
+        // BR / RET (these differ only in bit 22, which is ignored here).
+        else if insn & 0xffbf_fc1f == 0xd61f_0000 {
             let rn = field(insn, 9, 5);
             branch_to!(cpu.read_reg(rn, RegWidth::X));
         }
@@ -535,11 +557,15 @@ pub fn run(
                 }
                 0b001011 => {
                     // RORV
-                    cpu.write_reg(rd, rotate_right64(a, b % width_bits as u64, width_bits), width);
+                    cpu.write_reg(
+                        rd,
+                        rotate_right64(a, b % width_bits as u64, width_bits),
+                        width,
+                    );
                 }
                 0b000010 => {
-                    // UDIV
-                    let result = if b == 0 { 0 } else { a / b };
+                    // UDIV (division by zero yields zero)
+                    let result = a.checked_div(b).unwrap_or(0);
                     cpu.write_reg(rd, result, width);
                 }
                 0b000011 => {
@@ -547,7 +573,7 @@ pub fn run(
                     let result = if b == 0 {
                         0
                     } else {
-                        (sext(a, width_bits).wrapping_div(sext(b, width_bits))) as u64
+                        sext(a, width_bits).wrapping_div(sext(b, width_bits))
                     };
                     cpu.write_reg(rd, result, width);
                 }
@@ -636,26 +662,26 @@ fn mem_op(insn: u32, cpu: &mut Cpu, backend: &mut dyn Backend) -> Result<Option<
             };
             (rn_bits.wrapping_add(offset), None)
         } else {
-        // Unscaled / pre/post-index variants (LDUR/STUR etc.).
-        let imm9 = sign_extend32(field(insn, 20, 12), 9);
-        let mode = field(insn, 11, 10);
-        let mut addr = rn_bits;
-        let mut wb: Option<(u32, i64)> = None;
-        match mode {
-            0b00 => {
-                addr = (rn_bits as i64 + imm9) as u64;
+            // Unscaled / pre/post-index variants (LDUR/STUR etc.).
+            let imm9 = sign_extend32(field(insn, 20, 12), 9);
+            let mode = field(insn, 11, 10);
+            let mut addr = rn_bits;
+            let mut wb: Option<(u32, i64)> = None;
+            match mode {
+                0b00 => {
+                    addr = (rn_bits as i64 + imm9) as u64;
+                }
+                0b01 => {
+                    wb = Some((rn, imm9));
+                }
+                0b10 => return Err(unimplemented_insn(insn, cpu.pc)),
+                0b11 => {
+                    addr = (rn_bits as i64 + imm9) as u64;
+                    wb = Some((rn, imm9));
+                }
+                _ => unreachable!(),
             }
-            0b01 => {
-                wb = Some((rn, imm9 as i64));
-            }
-            0b10 => return Err(unimplemented_insn(insn, cpu.pc)),
-            0b11 => {
-                addr = (rn_bits as i64 + imm9) as u64;
-                wb = Some((rn, imm9 as i64));
-            }
-            _ => unreachable!(),
-        }
-        (addr, wb)
+            (addr, wb)
         }
     } else {
         return Err(unimplemented_insn(insn, cpu.pc));
@@ -701,7 +727,11 @@ fn mem_op(insn: u32, cpu: &mut Cpu, backend: &mut dyn Backend) -> Result<Option<
             };
             // Signed loads with a Wt destination are sign-extended to 32
             // bits; writing the W register takes care of zero-extending.
-            let width = if is_signed && opc == 0b11 { RegWidth::W } else { RegWidth::X };
+            let width = if is_signed && opc == 0b11 {
+                RegWidth::W
+            } else {
+                RegWidth::X
+            };
             cpu.write_reg(rt, value, width);
         } else {
             error = Some(format!("memory read fault at {addr:#x}"));
@@ -758,17 +788,35 @@ fn pair_op(insn: u32, cpu: &mut Cpu, backend: &mut dyn Backend) -> Result<Option
     let mut error: Option<String> = None;
     if l {
         if backend.read(addr, &mut buf[..len * 2]) {
-            let a = u64::from_le_bytes(buf[..len].try_into().unwrap());
-            let b = u64::from_le_bytes(buf[len..len * 2].try_into().unwrap());
-            let mask = (1u64 << (len * 8)) - 1;
-            cpu.write_reg(rt, a & mask, RegWidth::X);
-            cpu.write_reg(rt2, b & mask, RegWidth::X);
+            let (a, b) = match len {
+                1 => (buf[0] as u64, buf[1] as u64),
+                2 => (
+                    u16::from_le_bytes(buf[..2].try_into().unwrap()) as u64,
+                    u16::from_le_bytes(buf[2..4].try_into().unwrap()) as u64,
+                ),
+                4 => (
+                    u32::from_le_bytes(buf[..4].try_into().unwrap()) as u64,
+                    u32::from_le_bytes(buf[4..8].try_into().unwrap()) as u64,
+                ),
+                8 => (
+                    u64::from_le_bytes(buf[..8].try_into().unwrap()),
+                    u64::from_le_bytes(buf[8..16].try_into().unwrap()),
+                ),
+                _ => unreachable!(),
+            };
+            cpu.write_reg(rt, a, RegWidth::X);
+            cpu.write_reg(rt2, b, RegWidth::X);
         } else {
             error = Some(format!("memory read fault at {addr:#x}"));
         }
     } else {
-        let a = cpu.read_reg(rt, RegWidth::X) & ((1u64 << (len * 8)) - 1);
-        let b = cpu.read_reg(rt2, RegWidth::X) & ((1u64 << (len * 8)) - 1);
+        let mask = if len == 8 {
+            u64::MAX
+        } else {
+            (1u64 << (len * 8)) - 1
+        };
+        let a = cpu.read_reg(rt, RegWidth::X) & mask;
+        let b = cpu.read_reg(rt2, RegWidth::X) & mask;
         buf[..len].copy_from_slice(&a.to_le_bytes()[..len]);
         buf[len..len * 2].copy_from_slice(&b.to_le_bytes()[..len]);
         if !backend.write(addr, &buf[..len * 2]) {
@@ -996,7 +1044,7 @@ mod tests {
             &[
                 0xd2800080, // movz x0, #4
                 0xf90007e0, // str x0, [sp, #8]
-                0xd2800020, // movz x1, #1
+                0xd2800021, // movz x1, #1
                 0xf8617be1, // ldr x1, [sp, x1, lsl #3] -> loads from sp+8
                 0xd65f03c0, // ret
             ],
@@ -1038,7 +1086,7 @@ mod tests {
             0xd2800090, // movz x16, #4 (write)
             0xd4001001, // svc #0x80
             0xd28000e0, // movz x0, #7
-            0xd2800020, // movz x16, #1 (exit)
+            0xd2800030, // movz x16, #1 (exit)
             0xd4001001, // svc #0x80
             0xd65f03c0, // ret (unreachable)
         ]);
@@ -1135,7 +1183,8 @@ mod tests {
         result.unwrap();
         assert_eq!(cpu.x[0], 3);
         assert_eq!(cpu.x[3], 14);
-    }}
+    }
+}
 
 // ARM64 app loading and glue code
 //
@@ -1172,7 +1221,9 @@ pub fn detect_arm64_executable(bytes: &[u8]) -> bool {
         Ok(OFile::FatFile { files, .. }) => {
             // If there's a 32-bit ARM slice, prefer the established 32-bit
             // pipeline and only use the ARM64 path if ARM64 is all there is.
-            let has_arm32 = files.iter().any(|(arch, _)| arch.cputype == mach_object::CPU_TYPE_ARM);
+            let has_arm32 = files
+                .iter()
+                .any(|(arch, _)| arch.cputype == mach_object::CPU_TYPE_ARM);
             let has_arm64 = files.iter().any(|(arch, _)| arch.cputype == CPU_TYPE_ARM64);
             has_arm64 && !has_arm32
         }
@@ -1267,7 +1318,9 @@ fn guest_read(mem: &Mem, addr: u32, buf: &mut [u8]) -> bool {
     if addr as u64 + buf.len() as u64 > 0x1_0000_0000 {
         return false;
     }
-    buf.copy_from_slice(mem.unchecked_bytes_at(Ptr::<u8, false>::from_bits(addr), buf.len() as u32));
+    buf.copy_from_slice(
+        mem.unchecked_bytes_at(Ptr::<u8, false>::from_bits(addr), buf.len() as u32),
+    );
     true
 }
 
@@ -1275,7 +1328,9 @@ fn guest_read(mem: &Mem, addr: u32, buf: &mut [u8]) -> bool {
 /// 32-bit guest address space.
 fn guest_write(mem: &mut Mem, addr: u32, buf: &[u8]) -> Result<(), String> {
     if addr as u64 + buf.len() as u64 > 0x1_0000_0000 {
-        return Err(format!("guest write outside 32-bit address space: {addr:#x}"));
+        return Err(format!(
+            "guest write outside 32-bit address space: {addr:#x}"
+        ));
     }
     mem.bytes_at_mut(Ptr::<u8, true>::from_bits(addr), buf.len() as u32)
         .copy_from_slice(buf);
@@ -1354,11 +1409,19 @@ pub fn run_arm64_app(bundle: &Bundle, fs: &Fs) -> Result<u64, String> {
         }
         let base = base as u32;
         let vmsize = segment.vmsize as u32;
-        log_dbg!("Mapping {} at {:#x} (size {:#x})", segment.segname, base, vmsize);
+        log_dbg!(
+            "Mapping {} at {:#x} (size {:#x})",
+            segment.segname,
+            base,
+            vmsize
+        );
         mem.reserve(base, vmsize);
         if segment.filesize > 0 {
             if segment.fileoff + segment.filesize > bytes.len() as u64 {
-                return Err(format!("Segment {} extends beyond the end of the file", segment.segname));
+                return Err(format!(
+                    "Segment {} extends beyond the end of the file",
+                    segment.segname
+                ));
             }
             let src = &bytes[segment.fileoff as usize..][..segment.filesize as usize];
             mem.bytes_at_mut(Ptr::from_bits(base), segment.filesize as u32)
@@ -1373,7 +1436,9 @@ pub fn run_arm64_app(bundle: &Bundle, fs: &Fs) -> Result<u64, String> {
     };
     let entry_pc = entry_pc as i64 + slide;
     if entry_pc < 0 || entry_pc > u32::MAX as i64 {
-        return Err(format!("Entry point {entry_pc:#x} is outside the guest address space"));
+        return Err(format!(
+            "Entry point {entry_pc:#x} is outside the guest address space"
+        ));
     }
     let entry_pc = entry_pc as u64;
 
@@ -1400,8 +1465,5 @@ pub fn run_arm64_app(bundle: &Bundle, fs: &Fs) -> Result<u64, String> {
 
     log_dbg!("Starting ARM64 execution at PC {entry_pc:#x}");
     let mut backend = MemBackend { mem: &mut mem };
-    match run(&mut cpu, &mut backend, entry_pc, Some(STEP_LIMIT)) {
-        Ok(status) => Ok(status),
-        Err(err) => Err(err),
-    }
+    run(&mut cpu, &mut backend, entry_pc, Some(STEP_LIMIT))
 }
