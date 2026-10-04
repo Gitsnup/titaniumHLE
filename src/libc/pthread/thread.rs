@@ -346,6 +346,11 @@ fn pthread_testcancel(_env: &mut Environment) {
     log!("TODO: pthread_testcancel()");
 }
 
+fn pthread_exit(env: &mut Environment, retval: MutVoidPtr) {
+    log_dbg!("pthread_exit({:?})", retval);
+    env.exit_current_thread(retval);
+}
+
 #[allow(non_camel_case_types)]
 type mach_port_t = u32;
 
@@ -426,6 +431,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_detach(_)),
     export_c_func!(pthread_setcanceltype(_, _)),
     export_c_func!(pthread_testcancel()),
+    export_c_func!(pthread_exit(_)),
     export_c_func!(pthread_mach_thread_np(_)),
     export_c_func!(pthread_get_stackaddr_np(_)),
     export_c_func!(pthread_get_stacksize_np(_)),

@@ -1118,6 +1118,16 @@ impl Environment {
         new_thread_id
     }
 
+    /// Terminate the current guest thread and make its return value available
+    /// to a joining thread.
+    pub fn exit_current_thread(&mut self, return_value: MutVoidPtr) {
+        let current_thread = self.current_thread;
+        self.threads[current_thread].return_value = Some(return_value);
+        self.threads[current_thread].state = ThreadState::Dead;
+        self.yield_thread(ThreadBlock::NotBlocked);
+        unreachable!("a terminated guest thread was resumed");
+    }
+
     #[allow(unused)]
     pub fn get_tl_framework_state(&mut self) -> &mut frameworks::ThreadLocalState {
         &mut self.threads[self.current_thread].framework_state
