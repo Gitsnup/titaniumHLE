@@ -489,6 +489,21 @@ impl Window {
         }
         fn finger_absolute_coords(window: &Window, (x, y): (f32, f32)) -> (f32, f32) {
             let (screen_width, screen_height) = window.window.drawable_size();
+            // On Android, SDL reports finger coordinates in the touch device's
+            // native portrait orientation even after the fullscreen window has
+            // rotated to landscape. Convert them to the current window
+            // orientation before applying the normal viewport/orientation
+            // transform below.
+            let (x, y) = if Window::rotatable_fullscreen() {
+                match window.device_orientation {
+                    DeviceOrientation::Portrait => (x, y),
+                    DeviceOrientation::PortraitUpsideDown => (1.0 - x, 1.0 - y),
+                    DeviceOrientation::LandscapeLeft => (y, 1.0 - x),
+                    DeviceOrientation::LandscapeRight => (1.0 - y, x),
+                }
+            } else {
+                (x, y)
+            };
             (screen_width as f32 * x, screen_height as f32 * y)
         }
 
