@@ -42,6 +42,7 @@ struct NSThreadHostObject {
     thread_dictionary: id,
     owned: bool,
     finished: bool,
+    cancelled: bool,
     stack_size: NSUInteger,
     tolerate_type_mismatch: bool,
 }
@@ -61,6 +62,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         thread_dictionary: nil,
         owned: false,
         finished: false,
+        cancelled: false,
         stack_size: Mem::SECONDARY_THREAD_DEFAULT_STACK_SIZE,
         tolerate_type_mismatch: false,
     });
@@ -221,9 +223,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<NSThreadHostObject>(this).finished
 }
 
+- (())cancel {
+    env.objc.borrow_mut::<NSThreadHostObject>(this).cancelled = true;
+}
+
 - (bool)isCancelled {
-    log_dbg!("TODO: [(NSThread *){:?} isCancelled]", this);
-    false
+    env.objc.borrow::<NSThreadHostObject>(this).cancelled
 }
 
 - (())dealloc {
