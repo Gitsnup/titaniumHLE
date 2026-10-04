@@ -125,9 +125,20 @@ fn AudioComponentFindNext(
     assert!(in_component.is_null());
 
     let audio_comp_descr = env.mem.read(in_desc);
-    assert!(audio_comp_descr.component_type == kAudioUnitType_Output);
-    assert!(audio_comp_descr.component_sub_type == kAudioUnitSubType_RemoteIO);
-    assert!(audio_comp_descr.component_manufacturer == kAudioUnitManufacturer_Apple);
+    let component_type = audio_comp_descr.component_type;
+    let component_sub_type = audio_comp_descr.component_sub_type;
+    let component_manufacturer = audio_comp_descr.component_manufacturer;
+    if component_type != kAudioUnitType_Output
+        || component_sub_type != kAudioUnitSubType_RemoteIO
+        || component_manufacturer != kAudioUnitManufacturer_Apple
+    {
+        log_dbg!(
+            "AudioComponentFindNext requested unsupported component: type={:#x}, subtype={:#x}, manufacturer={:#x}; returning the compatible fake component",
+            component_type,
+            component_sub_type,
+            component_manufacturer,
+        );
+    }
 
     let state = State::get(&mut env.framework_state);
     if state.audio_component.is_null() {

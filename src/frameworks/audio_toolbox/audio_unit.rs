@@ -12,7 +12,7 @@ use std::time::Instant;
 use crate::audio::openal::al_types::{ALuint, ALvoid};
 use crate::audio::openal::{AL_BUFFERS_PROCESSED, AL_PLAYING, AL_SOURCE_STATE};
 
-use crate::abi::CallFromHost;
+use crate::abi::{CallFromHost, GuestFunction};
 use crate::dyld::FunctionExports;
 use crate::environment::Environment;
 use crate::export_c_func;
@@ -63,6 +63,31 @@ const kAudioUnitProperty_StreamFormat: AudioUnitPropertyID = 8;
 
 const kAudioOutputUnitProperty_EnableIO: AudioUnitPropertyID = 2003;
 
+fn AudioUnitAddRenderNotify(
+    env: &mut Environment,
+    in_unit: AudioUnit,
+    in_proc: GuestFunction,
+    in_ref_con: ConstVoidPtr,
+) -> OSStatus {
+    // AudioUnitAddRenderNotify is used by some early iOS games while setting
+    // up RemoteIO. The primary render callback is already driven by
+    // render_audio_unit(); notification callbacks are not needed by the
+    // emulator's OpenAL bridge, so accept the registration without invoking
+    // an extra guest callback or altering the audio stream.
+    let known_unit = audio_components::State::get(&mut env.framework_state)
+        .audio_component_instances
+        .contains_key(&in_unit);
+    let result = if known_unit { 0 } else { paramErr };
+    log_dbg!(
+        "AudioUnitAddRenderNotify({:?}, {:?}, {:?}) -> {:?}",
+        in_unit,
+        in_proc,
+        in_ref_con,
+        result
+    );
+    result
+}
+
 fn AudioUnitInitialize(env: &mut Environment, in_unit: AudioUnit) -> OSStatus {
     let run_loop = CFRunLoopGetMain(env);
     ns_run_loop::add_audio_unit(env, run_loop, in_unit);
@@ -86,8 +111,6 @@ fn AudioUnitSetProperty(
     in_data: ConstVoidPtr,
     in_data_size: u32,
 ) -> OSStatus {
-    assert!(in_element == 0);
-
     let host_object = audio_components::State::get(&mut env.framework_state)
         .audio_component_instances
         .get_mut(&in_unit)
@@ -125,7 +148,21 @@ fn AudioUnitSetProperty(
             result = 0;
             log_dbg!("AudioUnitSetProperty({:?}, kAudioOutputUnitProperty_EnableIO, {:?}, {:?}, {:?}, {:?}) -> {:?}", in_unit, in_scope, in_element, enabled, in_data_size, result);
         }
-        _ => unimplemented!(),
+        _ => {
+            // Older games set additional optional properties that are not
+            // needed by the emulator's OpenAL-backed output path. Accept
+            // them so audio setup can continue, while retaining diagnostics
+            // for future compatibility work.
+            log_dbg!(
+                "AudioUnitSetProperty({:?}, unknown property {}, scope {}, element {}, size {}) -> 0",
+                in_unit,
+                in_id,
+                in_scope,
+                in_element,
+                in_data_size,
+            );
+            result = 0;
+        }
     };
 
     result
@@ -136,12 +173,10 @@ fn AudioUnitGetProperty(
     in_unit: AudioUnit,
     in_id: AudioUnitPropertyID,
     in_scope: AudioUnitScope,
-    in_element: AudioUnitElement,
+    _in_element: AudioUnitElement,
     out_data: MutVoidPtr,
     io_data_size: MutPtr<u32>,
 ) -> OSStatus {
-    assert!(in_element == 0);
-
     let host_object = audio_components::State::get(&mut env.framework_state)
         .audio_component_instances
         .get_mut(&in_unit)
@@ -161,8 +196,12 @@ fn AudioUnitGetProperty(
             );
             let stream_format = match in_scope {
                 kAudioUnitScope_Global => host_object.global_stream_format,
-                kAudioUnitScope_Output => host_object.output_stream_format.unwrap(),
-                kAudioUnitScope_Input => host_object.input_stream_format.unwrap(),
+                kAudioUnitScope_Output => host_object
+                    .output_stream_format
+                    .unwrap_or(host_object.global_stream_format),
+                kAudioUnitScope_Input => host_object
+                    .input_stream_format
+                    .unwrap_or(host_object.global_stream_format),
                 _ => unimplemented!(),
             };
             env.mem.write(out_data.cast(), stream_format);
@@ -472,6 +511,7 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
 }
 
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(AudioUnitAddRenderNotify(_, _, _)),
     export_c_func!(AudioUnitInitialize(_)),
     export_c_func!(AudioUnitUninitialize(_)),
     export_c_func!(AudioUnitSetProperty(_, _, _, _, _, _)),
