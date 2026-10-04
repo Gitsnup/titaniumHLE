@@ -5444,6 +5444,65 @@ int test_strftime() {
     return -4;
   }
 
+  // macOS treats the unsupported '#' conversion literally, dropping the '%'.
+  res = strftime(buf, sizeof(buf), "%#c", &tm);
+  if (res != 2) {
+    return -5;
+  }
+  if (strcmp(buf, "#c") != 0) {
+    return -6;
+  }
+
+  memset(&tm, 0, sizeof(struct tm));
+  tm.tm_year = 2026 - 1900;
+
+  // The formatted year and its terminator fit exactly.
+  res = strftime(buf, 5, "%Y", &tm);
+  if (res != 4) {
+    return -7;
+  }
+  if (strcmp(buf, "2026") != 0) {
+    return -8;
+  }
+
+  // Insufficient space must return zero, including when only the NUL won't fit.
+  res = strftime(buf, 4, "%Y", &tm);
+  if (res != 0) {
+    return -9;
+  }
+  res = strftime(buf, 1, "%Y", &tm);
+  if (res != 0) {
+    return -10;
+  }
+
+  return 0;
+}
+
+int test_wcsftime() {
+  struct tm tm;
+  wchar_t buf[5];
+  memset(&tm, 0, sizeof(struct tm));
+  tm.tm_year = 2026 - 1900;
+
+  // The formatted year and its terminator fit exactly.
+  size_t res = wcsftime(buf, sizeof(buf) / sizeof(buf[0]), L"%Y", &tm);
+  if (res != 4) {
+    return -1;
+  }
+  if (wcscmp(buf, L"2026") != 0) {
+    return -2;
+  }
+
+  // Insufficient space must return zero, including when only the NUL won't fit.
+  res = wcsftime(buf, 4, L"%Y", &tm);
+  if (res != 0) {
+    return -3;
+  }
+  res = wcsftime(buf, 1, L"%Y", &tm);
+  if (res != 0) {
+    return -4;
+  }
+
   return 0;
 }
 
@@ -6660,6 +6719,7 @@ struct {
     FUNC_DEF(test_NSString_pathWithComponents),
     FUNC_DEF(test_strptime),
     FUNC_DEF(test_strftime),
+    FUNC_DEF(test_wcsftime),
     FUNC_DEF(test_RespondsToSelector),
     FUNC_DEF(test_NSKeyedArchiver_encodeIntForKey),
     FUNC_DEF(test_NSKeyedArchiver_NSKeyedUnarchiver),
