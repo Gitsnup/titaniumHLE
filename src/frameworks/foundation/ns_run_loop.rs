@@ -21,7 +21,8 @@ use crate::frameworks::{core_animation, media_player, uikit};
 use crate::libc::semaphore::{host_create_semaphore, sem_post, sem_t};
 use crate::mem::MutPtr;
 use crate::objc::{
-    id, msg, msg_send, nil, objc_classes, release, retain, Class, ClassExports, HostObject, SEL,
+    id, msg, msg_class, msg_send, nil, objc_classes, release, retain, Class, ClassExports,
+    HostObject, SEL,
 };
 use crate::Environment;
 use std::collections::VecDeque;
@@ -121,6 +122,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())run {
     run_run_loop(env, this, /* single_iteration: */ false, None);
+}
+
+- (id)limitDateForMode:(NSRunLoopMode)_mode {
+    // The emulator polls unscheduled input and other sources at 60 Hz. Return
+    // the same cadence to callers that drive a run loop manually, such as
+    // older games that repeatedly ask when the loop should next wake up.
+    msg_class![env; NSDate dateWithTimeIntervalSinceNow:(1.0 / 60.0)]
 }
 
 - (())runUntilDate:(id)date {
