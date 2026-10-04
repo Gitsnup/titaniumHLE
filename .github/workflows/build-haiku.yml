@@ -65,6 +65,26 @@ jobs:
           # Rust channel, so we use nightly + rust-src and compile std from
           # source (-Z build-std).
           rustup toolchain install nightly --profile minimal --component rust-src
+      # SDL 2.26.4 calls BUrl::OpenWithPreferredApplication(bool), which is
+      # absent from the Haiku headers shipped in haiku/cross-compiler:x86_64.
+      # URL opening is not used by touchHLE, so replace that optional backend
+      # with a clear SDL error instead of failing the whole cross-build.
+      - name: Patch SDL Haiku URL backend for the cross-compiler image
+        shell: bash
+        run: |
+          source "$HOME/.cargo/env"
+          cargo fetch
+          SDL_SYSURL="$(find "$HOME/.cargo/git/checkouts" -path '*/sdl2-sys/SDL/src/misc/haiku/SDL_sysurl.cc' -print -quit)"
+          test -n "$SDL_SYSURL"
+          cat > "$SDL_SYSURL" <<'EOF'
+          #include "../SDL_sysurl.h"
+
+          int SDL_SYS_OpenURL(const char *url)
+          {
+              (void)url;
+              return SDL_SetError("URL opening is unavailable in this Haiku build");
+          }
+          EOF
       - name: Get Boost headers
         shell: bash
         run: |
