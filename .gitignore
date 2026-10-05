@@ -27,3 +27,4 @@ android/build
 # Default developer dump file
 
 DUMP.txt
+run*.log
