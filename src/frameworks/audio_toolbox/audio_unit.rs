@@ -5,9 +5,7 @@
  */
 //! `AudioUnit.h` (Audio Unit Services)
 //!
-//! [Audio Unit Programming Guide](https://developer.apple.com/library/archive/
-//! documentation/MusicAudio/Conceptual/AudioUnitProgrammingGuide/TheAudioUnit/
-//! TheAudioUnit.html)
+//! [Audio Unit Programming Guide](https://developer.apple.com/library/archive/documentation/MusicAudio/Conceptual/AudioUnitProgrammingGuide/TheAudioUnit/TheAudioUnit.html)
 
 use std::time::Instant;
 
