@@ -27,7 +27,7 @@ use crate::frameworks::core_animation::{ca_layer::CALayerHostObject, CACurrentMe
 use crate::frameworks::core_foundation::time::CFTimeInterval;
 use crate::frameworks::core_graphics::cg_color::CGColorHostObject;
 use crate::frameworks::foundation::ns_string::{from_rust_string, to_rust_string};
-use crate::objc::{id, msg, nil, release, retain};
+use crate::objc::{SEL, id, msg, nil, release, retain};
 use crate::Environment;
 
 #[derive(Default)]
@@ -257,9 +257,19 @@ impl State {
     }
 
     pub fn update_started_and_finished_animations(self, env: &mut Environment) {
+        // animationDidStart: and animationDidStop:finished: are optional
+        // CAAnimationDelegate methods, so they must only be sent to delegates
+        // that actually implement them.
+        let animation_did_start_sel: SEL = env
+            .objc
+            .register_host_selector("animationDidStart:".to_string(), &mut env.mem);
+        let animation_did_stop_sel: SEL = env
+            .objc
+            .register_host_selector("animationDidStop:finished:".to_string(), &mut env.mem);
         for animation in self.started_animations {
             let delegate = msg![env; animation delegate];
-            if delegate != nil {
+            let responds: bool = msg![env; delegate respondsToSelector: animation_did_start_sel];
+            if delegate != nil && responds {
                 () = msg![env; delegate animationDidStart: animation];
             }
         }
@@ -269,7 +279,8 @@ impl State {
         }
         for (layer, animation, finished, removed_on_completion, key) in self.finished_animations {
             let delegate = msg![env; animation delegate];
-            if delegate != nil {
+            let responds: bool = msg![env; delegate respondsToSelector: animation_did_stop_sel];
+            if delegate != nil && responds {
                 () = msg![env; delegate animationDidStop: animation finished: finished];
             }
 
