@@ -211,7 +211,13 @@ pub const CLASSES: ClassExports = objc_classes! {
                     .register_host_selector("parser:foundCDATA:".to_string(), &mut env.mem);
                 let responds: bool = msg![env; delegate respondsToSelector:sel];
                 if responds {
-                    todo!("Implement parser:foundCDATA: delegate call");
+                    let bytes = e.into_inner();
+                    let data: id = msg_class![env; NSData
+                        dataWithBytes:(ConstVoidPtr::from_bits(bytes.as_ptr() as _))
+                              length:(bytes.len() as NSUInteger)
+                    ];
+                    let data = autorelease(env, data);
+                    () = msg![env; delegate parser:this foundCDATA:data];
                 } else {
                     let sel: SEL = env
                         .objc
@@ -244,7 +250,32 @@ pub const CLASSES: ClassExports = objc_classes! {
                 let responds: bool = msg![env; delegate respondsToSelector:sel];
                 assert!(!responds); // TODO
             }
-            e => unimplemented!("{:?}", e)
+            Event::GeneralRef(e) => {
+                let name = e.decode().unwrap().to_string();
+                let text: &str = match name.as_str() {
+                    "lt" => "<",
+                    "gt" => ">",
+                    "amp" => "&",
+                    "quot" => "\"",
+                    "apos" => "'",
+                    _ => {
+                        // Without a DTD, NSXMLParser only knows the five
+                        // predefined entities. Treat anything else as a
+                        // parse error rather than panicking.
+                        log_dbg!("unsupported general entity reference &{}; skipping", name);
+                        continue;
+                    }
+                };
+                let sel: SEL = env
+                    .objc
+                    .register_host_selector("parser:foundCharacters:".to_string(), &mut env.mem);
+                let responds: bool = msg![env; delegate respondsToSelector:sel];
+                if responds {
+                    let chars = from_rust_string(env, text.to_string());
+                    let chars = autorelease(env, chars);
+                    () = msg![env; delegate parser:this foundCharacters:chars];
+                }
+            }            e => unimplemented!("{:?}", e)
         }
     }
     let sel: SEL = env

@@ -14,6 +14,7 @@
 use super::{id, nil, Class, ObjC, IMP, SEL};
 use crate::abi::{CallFromHost, GuestRet};
 use crate::environment::ThreadId;
+use crate::frameworks::foundation::ns_string;
 use crate::libc::pthread::cond::{
     pthread_cond_broadcast, pthread_cond_destroy, pthread_cond_init, pthread_cond_t,
     pthread_cond_wait,
@@ -313,13 +314,25 @@ Type mismatch when sending message {} to {:?}!
             is_metaclass,
         }) = host_object.as_any().downcast_ref()
         {
+            let name: String = name.clone();
             log!(
                 "Call to faked class \"{}\" ({:?}) {} method \"{}\". Behaving as if message was sent to nil.",
                 name,
                 class,
                 if is_metaclass { "class" } else { "instance" },
                 selector.as_str(&env.mem),
-            );
+            ); // Surface what an app is trying to log, since that is often the
+               // only hint about what it wanted the faked class to do.
+            let selector_name: String = selector.as_str(&env.mem).to_owned();
+            if selector_name == "logError:message:exception:" {
+                let error = id::from_bits(env.cpu.regs()[2]);
+                let message = id::from_bits(env.cpu.regs()[3]);
+                for (label, arg) in [("error", error), ("message", message)] {
+                    if let Some(string) = ns_string::try_to_rust_string(env, arg) {
+                        log!("faked class \"{}\" {}: {:?}", name, label, string);
+                    }
+                }
+            }
             env.cpu.regs_mut()[0..2].fill(0);
             return;
         } else {

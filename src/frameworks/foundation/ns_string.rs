@@ -1856,6 +1856,13 @@ pub fn to_rust_string(env: &mut Environment, string: id) -> Cow<'static, str> {
         .to_utf8()
         .unwrap()
 }
+/// Like [to_rust_string] but returns `None` if the object does not exist or
+/// is not an NSString.
+pub fn try_to_rust_string(env: &mut Environment, string: id) -> Option<Cow<'static, str>> {
+    let object = env.objc.get_host_object(string)?;
+    let object = object.as_any().downcast_ref::<StringHostObject>()?;
+    object.to_utf8().ok()
+}
 
 /// Shortcut for host code, calls a callback once for each UTF-16 code-unit in a
 /// string. This is equivalent to a for loop using the `length` and

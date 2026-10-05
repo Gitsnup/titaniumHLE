@@ -1,0 +1,168 @@
+titaniumHLE v0.3.0-100-gf51334b9 — https://touchhle.org/
+
+touchHLE: Base path for touchHLE files: .
+App bundle info:
+- Display name: Cut the Rope
+- Version: 1.1
+- Identifier: com.chillingo.cuttheropexmas
+- Internal name (canonical): CutTheRopeGift.app
+- Minimum OS version: 3.0
+- Required device capabilities: (not specified)
+- Device family: iPhone, iPad
+
+No options found for this app in touchHLE_default_options.txt
+No options found for this app in ./touchHLE_options.txt
+
+touchHLE::environment: iPhone device family is chosen.
+touchHLE::gles: Creating an OpenGL ES 1.1 context:
+touchHLE::gles: Trying: Native OpenGL ES 1.1
+touchHLE::gles: => Success!
+touchHLE::window: Driver info: OpenGL ES-CM 1.1 Mesa 22.3.6 / Mesa/X.org / llvmpipe (LLVM 15.0.6, 256 bits)
+touchHLE::mach_o: Loading armv7 slice for "CutTheRopeGift"
+touchHLE::environment: Warning: app binary depends on unimplemented or missing dylib "/System/Library/Frameworks/Security.framework/Security"
+touchHLE::mach_o: Loading armv7 slice for "libsqlite3.dylib"
+touchHLE::mach_o: Loading armv7 slice for "libz.1.dylib"
+touchHLE::environment: Warning: app binary depends on unimplemented or missing dylib "/System/Library/Frameworks/AddressBook.framework/AddressBook"
+touchHLE::environment: Warning: app binary depends on unimplemented or missing dylib "/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices"
+touchHLE::mach_o: Loading armv7 slice for "libgcc_s.1.dylib"
+touchHLE::dyld: Warning: unhandled external relocation "_OBJC_EHTYPE_id" in "CutTheRopeGift" at 0x16fc88, 0x16fca4, 0x16fd88, 0x16fe94, 0x16fea8
+touchHLE::dyld: Warning: unhandled external relocation "_OBJC_EHTYPE_$_NSException" in "CutTheRopeGift" at 0x16fca8
+touchHLE::dyld: Warning: unhandled external relocation "__NSConcreteGlobalBlock" in "CutTheRopeGift" at 0x16fc74, 0x1798b4, 0x17a1a0, 0x17a220, 0x17a250, 0x17a290
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamErrorDomainHTTP" at 0x1481a8 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFProxyTypeSOCKS" at 0x1481ac in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFProxyTypeKey" at 0x1481b0 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFProxyTypeHTTP" at 0x1481b4 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFProxyPortNumberKey" at 0x1481b8 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFProxyHostNameKey" at 0x1481bc in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFProxyAutoConfigurationURLKey" at 0x1481c0 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFHTTPAuthenticationUsername" at 0x1481cc in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFHTTPAuthenticationPassword" at 0x1481d0 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFHTTPAuthenticationAccountDomain" at 0x1481d4 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFErrorDomainCFNetwork" at 0x1481d8 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_NSURLProtectionSpaceHTTPProxy" at 0x1481e4 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_NSURLAuthenticationMethodDefault" at 0x1481e8 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_NSPOSIXErrorDomain" at 0x1481ec in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFHTTPAuthenticationSchemeNTLM" at 0x148204 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFHTTPAuthenticationSchemeBasic" at 0x148208 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_UIWindowLevelStatusBar" at 0x14820c in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_UIBackgroundTaskInvalid" at 0x148214 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kUTTagClassMIMEType" at 0x148234 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kUTTagClassFilenameExtension" at 0x148238 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertySOCKSProxyPort" at 0x148244 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertySOCKSProxyHost" at 0x148248 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertySOCKSProxy" at 0x14824c in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertyHTTPSProxyPort" at 0x148250 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertyHTTPSProxyHost" at 0x148254 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertyHTTPRequestBytesWrittenCount" at 0x14825c in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertyHTTPProxyPort" at 0x148260 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertyHTTPProxyHost" at 0x148264 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertyHTTPProxy" at 0x148268 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kCFStreamPropertyHTTPAttemptPersistentConnection" at 0x14826c in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_NSUnderlyingErrorKey" at 0x148284 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_GKPlayerDidChangeNotificationName" at 0x1482e0 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_NSURLAuthenticationMethodServerTrust" at 0x1482fc in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "__NSConcreteStackBlock" at 0x148308 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_UIImagePickerControllerOriginalImage" at 0x148314 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_UIImagePickerControllerEditedImage" at 0x148318 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_NSFilePathErrorKey" at 0x14831c in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kABPersonPhoneProperty" at 0x148328 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kABPersonLastNameProperty" at 0x14832c in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kABPersonFirstNameProperty" at 0x148330 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_kABPersonEmailProperty" at 0x148334 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "___objc_personality_v0" at 0x148450 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_OBJC_EHTYPE_$_NSException" at 0x148454 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_NSURLErrorFailingURLStringErrorKey" at 0x1484c0 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled non-lazy symbol "_MPMoviePlayerLoadStateDidChangeNotification" at 0x1485e4 in "CutTheRopeGift"
+touchHLE::dyld: Warning: unhandled external relocation "dyld_stub_binder" in "libgcc_s.1.dylib" at 0x30009000
+touchHLE::objc::classes: Note: substituting fake class for FBDialog to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FBLoginDialog to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FBRequest to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryOffer to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdNavigationDelegate to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAPI to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurrySession to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryHTTPEater to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryHTTPResponse to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryConnectionDelegate to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAd to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdParser to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdView to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdImage to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdImpression to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryPageViewDelegate to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdCanvasViewController to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdListView to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdTheme to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdHook to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdCanvasView to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdProperties to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryFileCache to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryEvent to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryProtocolData to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdAssignment to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdAppStoreConnectionDelegate to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryHeartBeater to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryImageCache to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryUtil to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdLocation to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdDimension to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdTextStyle to improve compatibility
+touchHLE::objc::classes: Note: substituting fake class for FlurryAdState to improve compatibility
+CPU emulation begins now.
+touchHLE::environment: Found sorted order ["libgcc_s.1.dylib", "libsqlite3.dylib", "libz.1.dylib", "CutTheRopeGift"]
+touchHLE::objc::properties: TODO: Lock when atomic is set to true in objc_setProperty [this log will only be shown once]
+touchHLE::frameworks::system_configuration::sc_network_reachability: Applying game-specific hack for Cut the Rope: SCNetworkReachabilityCreateWithName("chillingo-crystal.appspot.com") returns NULL
+CutTheRopeGift[0] Failed to create reachability object
+touchHLE::objc::messages: Call to faked class "FlurryAPI" (0x16ea40) class method "startSession:". Behaving as if message was sent to nil.
+touchHLE::frameworks::foundation::ns_exception: TODO: Ignoring uncaught exception handler at address 0x707d
+touchHLE::frameworks::foundation::ns_locale: The app requested your preferred languages. No information could be retrieved, so "en" (English) will be reported.
+touchHLE::gles: Creating an OpenGL ES 1.1 context:
+touchHLE::gles: Trying: Native OpenGL ES 1.1
+touchHLE::gles: => Success!
+touchHLE::frameworks::opengles::eagl: Driver info: OpenGL ES-CM 1.1 Mesa 22.3.6 / Mesa/X.org / llvmpipe (LLVM 15.0.6, 256 bits)
+touchHLE::frameworks::foundation::ns_xml_parser: TODO: [(NSXMLParser*) 0x3020ae70 setShouldResolveExternalEntities:true]
+touchHLE::frameworks::foundation::ns_xml_parser: TODO: [(NSXMLParser*) 0x3020b2b0 setShouldResolveExternalEntities:true]
+touchHLE::frameworks::foundation::ns_xml_parser: TODO: [(NSXMLParser*) 0x3020b470 setShouldResolveExternalEntities:true]
+touchHLE::frameworks::audio_toolbox::audio_session: TODO: AudioSessionInitialize((null), (null), GuestFunction(0x1ba2d), 0x3020b830) -> 0
+touchHLE::frameworks::audio_toolbox::audio_session: TODO: AudioSessionSetProperty(1633902964, 4, 0xfffffd84 ([105, 98, 109, 97])) -> 0
+touchHLE::frameworks::audio_toolbox::audio_session: TODO: AudioSessionSetActive(true) -> 0
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib conf.c:5180:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
+ALSA lib conf.c:5180:(_snd_config_evaluate) function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1334:(snd_func_refer) error evaluating name
+ALSA lib conf.c:5180:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5703:(snd_config_expand) Evaluate error: No such file or directory
+ALSA lib pcm.c:2666:(snd_pcm_open_noupdate) Unknown PCM default
+touchHLE::frameworks::openal: Attempted to get context but currently active context (null) is invalid, skipping!
+touchHLE::frameworks::system_configuration::sc_network_reachability: Applying game-specific hack for Cut the Rope: SCNetworkReachabilityCreateWithName("chillingo-crystal.appspot.com") returns NULL
+CutTheRopeGift[0] Failed to create reachability object
+CutTheRopeGift[0] --> lockToOrientation: [1]
+touchHLE::frameworks::system_configuration::sc_network_reachability: Applying game-specific hack for Cut the Rope: SCNetworkReachabilityCreateWithName("chillingo-crystal.appspot.com") returns NULL
+CutTheRopeGift[0] Failed to create reachability object
+touchHLE::window: Consuming new event: Window { timestamp: 50, window_id: 1, win_event: Shown }
+touchHLE::window: Consuming new event: Window { timestamp: 263, window_id: 1, win_event: Exposed }
+touchHLE::window: Consuming new event: Window { timestamp: 263, window_id: 1, win_event: Enter }
+touchHLE::window: Consuming new event: MouseMotion { timestamp: 263, window_id: 1, which: 0, mousestate: MouseState { mouse_state: 0, x: 0, y: 0 }, x: 160, y: 240, xrel: 0, yrel: 0 }
+touchHLE::window: Consuming new event: Window { timestamp: 263, window_id: 1, win_event: FocusGained }
+touchHLE::frameworks::foundation::ns_xml_parser: TODO: [(NSXMLParser*) 0x302096b0 setShouldResolveExternalEntities:true]
+
+thread 'main' (15182) panicked at src/frameworks/foundation/ns_xml_parser.rs:247:18:
+not implemented: GeneralRef(BytesRef { content: Owned("lt") })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Register state immediately after panic:
+Dumping registers for current thread (#0)
+	 R0: 0x30219cd0	 R1: 0x00000010	 R2: 0x30219cd0	 R3: 0x30219cd0
+	 R4: 0x3020c2d0	 R5: 0x302096e0	 R6: 0x00178b6c	 R7: 0xfffffdd4
+	 R8: 0x0000001b	 R9: 0x00178ec8	R10: 0x3020a990	R11: 0x00179a0c
+	R12: 0x00178edc	 SP: 0xfffffdc8	 LR: 0x0000d6bb	 PC: 0x001005dc
+Attempting to produce stack trace for current thread (#0):
+ 0. 0x1005dc (PC)
+ 1. 0xd6bb (LR)
+ 2. [host function]
+ 3. [host function]
+ 4. [host function]
+ 5. [host function]
+ 6. [host function]
+ 7. 0x30dc
+Next FP ((null)) is outside the stack.
