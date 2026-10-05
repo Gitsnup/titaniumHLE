@@ -438,7 +438,8 @@ impl GuestFile {
 
     pub fn is_seekable(&self) -> bool {
         // Due to legacy directory iteration support, directories are seekable
-        // https://stackoverflow.com/questions/65911066/what-does-lseek-mean-for-a-directory-file-descriptor
+        // https://stackoverflow.com/questions/65911066/what-does-lseek-mean-
+        // for-a-directory-file-descriptor
         !matches!(self, GuestFile::Socket)
     }
 }
@@ -496,7 +497,9 @@ impl Seek for GuestFile {
             GuestFile::IpaBundleFile(file) => file.seek(pos),
             GuestFile::ResourceFile(file) => file.get().seek(pos),
             GuestFile::Directory => {
-                // Note: directories as supposed to be seekable on iOS! https://stackoverflow.com/questions/65911066/what-does-lseek-mean-for-a-directory-file-descriptor
+                // Note: directories are supposed to be seekable on iOS!
+                // https://stackoverflow.com/questions/65911066/what-does-lseek-
+                // mean-for-a-directory-file-descriptor
                 // As far as I can (f)tell, apps are really not using that
                 // properly and returning -1 on fseek/ftell is fine.
                 // TODO: implement seeking properly and return "cookie" values
@@ -517,6 +520,7 @@ pub struct Fs {
     root: FsNode,
     working_directory: GuestPathBuf,
     home_directory: GuestPathBuf,
+    bundle_directory: GuestPathBuf,
 }
 impl Fs {
     /// Construct a filesystem containing a home directory for the app, its
@@ -547,9 +551,9 @@ impl Fs {
         const FAKE_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
         let home_directory = APPLICATIONS.join(FAKE_UUID);
-        let working_directory = GuestPathBuf::from("/".to_string());
-
         let bundle_guest_path = home_directory.join(&bundle_dir_name);
+
+        let working_directory = GuestPathBuf::from("/".to_string());
 
         let directories = ["Documents", "Library", "tmp"];
         let host_path_directories = directories.map(|dir| {
@@ -582,6 +586,17 @@ impl Fs {
         });
 
         if !read_only_mode {
+            // Early PopCap titles expect this nested save directory to exist
+            // before opening their first user database file.
+            let path = paths::user_data_base_path()
+                .join(paths::SANDBOX_DIR)
+                .join(bundle_id)
+                .join("Documents")
+                .join("userdata");
+            if let Err(e) = std::fs::create_dir_all(&path) {
+                panic!("Could not create userdata directory for app at {path:?}: {e:?}");
+            }
+
             // Special case: Some apps may create save files at
             // Library/Preferences at the start, thus presence of that
             // directory is expected
@@ -700,6 +715,7 @@ impl Fs {
             root,
             working_directory,
             home_directory,
+            bundle_directory: bundle_guest_path.clone(),
         };
         assert!(fs.lookup_node(&bundle_guest_path).is_some());
         (fs, bundle_guest_path)
@@ -711,6 +727,7 @@ impl Fs {
             root: FsNode::dir(),
             working_directory: GuestPathBuf::from(String::new()),
             home_directory: GuestPathBuf::from(String::new()),
+            bundle_directory: GuestPathBuf::from(String::new()),
         }
     }
 
@@ -766,7 +783,23 @@ impl Fs {
 
     /// Get the node at a given path, if it exists.
     fn lookup_node(&self, path: &GuestPath) -> Option<&FsNode> {
-        self.lookup_node_inner(&resolve_path(path, Some(&self.working_directory)))
+        let resolved = resolve_path(path, Some(&self.working_directory));
+        if let Some(node) = self.lookup_node_inner(&resolved) {
+            return Some(node);
+        }
+
+        // A few early iOS games build resource paths from the application
+        // home directory instead of using NSBundle. If that lookup misses,
+        // retry the same relative suffix inside the app bundle. This keeps
+        // the normal cwd and sandbox behavior intact for other applications.
+        let home = resolve_path(&self.home_directory, None);
+        if resolved.starts_with(&home) && resolved.len() > home.len() {
+            let suffix = &resolved[home.len()..];
+            let mut bundle_path = resolve_path(&self.bundle_directory, None);
+            bundle_path.extend_from_slice(suffix);
+            return self.lookup_node_inner(&bundle_path);
+        }
+        None
     }
 
     /// Get the parent of the node at a given path, if it exists, and return it
@@ -1049,8 +1082,32 @@ impl Fs {
 
         let path = path.as_ref();
 
-        let (parent_node, new_filename) =
-            self.lookup_parent_node(path).ok_or(FsError::DoesNotExist)?;
+        // `lookup_parent_node` is also used by read-only fopen calls. Retry
+        // an absent home-directory resource inside the app bundle before
+        // taking the mutable parent borrow needed for writes.
+        let mut lookup_path = resolve_path(path, Some(&self.working_directory));
+        if self.lookup_node_inner(&lookup_path).is_none() {
+            let home = resolve_path(&self.home_directory, None);
+            if lookup_path.starts_with(&home) && lookup_path.len() > home.len() {
+                let suffix = &lookup_path[home.len()..];
+                let mut bundle_path = resolve_path(&self.bundle_directory, None);
+                bundle_path.extend_from_slice(suffix);
+                if self.lookup_node_inner(&bundle_path).is_some() {
+                    lookup_path = bundle_path;
+                }
+            }
+        }
+        let (new_filename, parent_components) =
+            lookup_path.split_last().ok_or(FsError::DoesNotExist)?;
+        let mut parent_node = &mut self.root;
+        for &component in parent_components {
+            let FsNode::Directory { children, .. } = parent_node else {
+                return Err(FsError::NonexistentParentDir);
+            };
+            parent_node = children
+                .get_mut(component)
+                .ok_or(FsError::NonexistentParentDir)?;
+        }
         let FsNode::Directory {
             children,
             writeable: dir_host_path,
@@ -1060,7 +1117,7 @@ impl Fs {
         };
 
         // Open an existing file if possible
-        if let Some(existing_file) = children.get(&new_filename) {
+        if let Some(existing_file) = children.get(*new_filename) {
             if create && exclusive {
                 // TODO: This should also return an error if the last
                 // component is a symlink, but the FS currently doesn't
@@ -1131,7 +1188,7 @@ impl Fs {
             }
         }
 
-        let host_path = dir_host_path.join(&new_filename);
+        let host_path = dir_host_path.join(new_filename);
 
         let file = handle_open_err(
             File::options()
@@ -1149,7 +1206,7 @@ impl Fs {
             host_path
         );
         children.insert(
-            new_filename,
+            (*new_filename).to_string(),
             FsNode::File {
                 location: FileLocation::Path(host_path),
                 writeable: true,

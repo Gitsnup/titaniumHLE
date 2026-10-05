@@ -82,6 +82,27 @@ fn OSAtomicCompareAndSwapPtrBarrier(
     }
 }
 
+fn OSSpinLockTry(env: &mut Environment, lock: MutPtr<i32>) -> bool {
+    // OSSpinLock uses zero for its unlocked state. Host calls are atomic in
+    // touchHLE, so a compare-and-swap is sufficient here.
+    OSAtomicCompareAndSwap32Barrier(env, 0, 1, lock)
+}
+
+fn OSSpinLockLock(env: &mut Environment, lock: MutPtr<i32>) {
+    // Host functions run on a single host thread. Waiting for a lock that is
+    // already held cannot allow another guest thread to make progress, so make
+    // this programming error explicit instead of deadlocking the emulator.
+    assert!(
+        OSSpinLockTry(env, lock),
+        "OSSpinLockLock() encountered an already-held lock"
+    );
+}
+
+fn OSSpinLockUnlock(env: &mut Environment, lock: MutPtr<i32>) {
+    // Apple's API unconditionally unlocks the passed lock.
+    env.mem.write(lock, 0);
+}
+
 fn OSMemoryBarrier(_env: &mut Environment) {
     // no-op
 }
@@ -94,5 +115,8 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(OSAtomicCompareAndSwap32Barrier(_, _, _)),
     export_c_func!(OSAtomicCompareAndSwapPtr(_, _, _)),
     export_c_func!(OSAtomicCompareAndSwapPtrBarrier(_, _, _)),
+    export_c_func!(OSSpinLockTry(_)),
+    export_c_func!(OSSpinLockLock(_)),
+    export_c_func!(OSSpinLockUnlock(_)),
     export_c_func!(OSMemoryBarrier()),
 ];

@@ -28,7 +28,7 @@
 #[macro_use]
 mod log;
 mod abi;
-mod arm64;
+pub(crate) mod arm64;
 mod audio;
 mod bundle;
 mod cpu;

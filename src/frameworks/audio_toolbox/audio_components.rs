@@ -44,6 +44,11 @@ pub struct AudioComponentInstanceHostObject {
     pub input_stream_format: Option<AudioStreamBasicDescription>,
     pub output_stream_format: Option<AudioStreamBasicDescription>,
     pub render_callback: Option<AURenderCallbackStruct>,
+    /// Callbacks registered through `AudioUnitAddRenderNotify`.
+    ///
+    /// Unlike `render_callback`, these observe an audio unit's render operation
+    /// before and after it runs.
+    pub render_notify_callbacks: Vec<AURenderCallbackStruct>,
     pub last_render_time: Option<Instant>,
     pub al_source: Option<ALuint>,
     pub is_running_handler: bool,
@@ -54,7 +59,9 @@ impl Default for AudioComponentInstanceHostObject {
         // through a test app built targetting iOS 2.0
         AudioComponentInstanceHostObject {
             started: false,
-            // returning 1024 based on https://developer.apple.com/documentation/audiotoolbox/kaudiounitproperty_maximumframesperslice
+            // Returning 1024 based on the maximum-frames-per-slice property:
+            // https://developer.apple.com/documentation/audiotoolbox/
+            // kaudiounitproperty_maximumframesperslice
             maximum_frames_per_slice: 1024,
             global_stream_format: AudioStreamBasicDescription {
                 sample_rate: 44100.0,
@@ -73,6 +80,7 @@ impl Default for AudioComponentInstanceHostObject {
             input_stream_format: None,
             output_stream_format: None,
             render_callback: None,
+            render_notify_callbacks: Vec::new(),
             last_render_time: None,
             al_source: None,
             is_running_handler: false,

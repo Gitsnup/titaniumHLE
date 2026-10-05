@@ -5,7 +5,9 @@
  */
 //! `AudioUnit.h` (Audio Unit Services)
 //!
-//! [Audio Unit Programming Guide](https://developer.apple.com/library/archive/documentation/MusicAudio/Conceptual/AudioUnitProgrammingGuide/TheAudioUnit/TheAudioUnit.html)
+//! [Audio Unit Programming Guide](https://developer.apple.com/library/archive/
+//! documentation/MusicAudio/Conceptual/AudioUnitProgrammingGuide/TheAudioUnit/
+//! TheAudioUnit.html)
 
 use std::time::Instant;
 
@@ -21,7 +23,10 @@ use crate::frameworks::audio_toolbox::audio_queue::{
     is_supported_audio_format, log_if_broken_audio_format,
 };
 use crate::frameworks::carbon_core::{paramErr, OSStatus};
-use crate::frameworks::core_audio_types::AudioStreamBasicDescription;
+use crate::frameworks::core_audio_types::{
+    kAudioFormatFlagIsPacked, kAudioFormatFlagIsSignedInteger, kAudioFormatLinearPCM,
+    AudioStreamBasicDescription,
+};
 use crate::frameworks::core_foundation::cf_run_loop::CFRunLoopGetMain;
 use crate::frameworks::foundation::ns_run_loop;
 use crate::mem::{guest_size_of, ConstVoidPtr, MutPtr, MutVoidPtr, SafeRead};
@@ -61,7 +66,11 @@ const kAudioUnitProperty_SetRenderCallback: AudioUnitPropertyID = 23;
 const kAudioUnitProperty_MaximumFramesPerSlice: AudioUnitPropertyID = 14;
 const kAudioUnitProperty_StreamFormat: AudioUnitPropertyID = 8;
 
+const kAudioOutputUnitProperty_IsRunning: AudioUnitPropertyID = 2001;
 const kAudioOutputUnitProperty_EnableIO: AudioUnitPropertyID = 2003;
+
+const kAudioUnitRenderAction_PreRender: u32 = 1 << 2;
+const kAudioUnitRenderAction_PostRender: u32 = 1 << 3;
 
 fn AudioUnitAddRenderNotify(
     env: &mut Environment,
@@ -69,15 +78,19 @@ fn AudioUnitAddRenderNotify(
     in_proc: GuestFunction,
     in_ref_con: ConstVoidPtr,
 ) -> OSStatus {
-    // AudioUnitAddRenderNotify is used by some early iOS games while setting
-    // up RemoteIO. The primary render callback is already driven by
-    // render_audio_unit(); notification callbacks are not needed by the
-    // emulator's OpenAL bridge, so accept the registration without invoking
-    // an extra guest callback or altering the audio stream.
-    let known_unit = audio_components::State::get(&mut env.framework_state)
-        .audio_component_instances
-        .contains_key(&in_unit);
-    let result = if known_unit { 0 } else { paramErr };
+    let audio_units =
+        &mut audio_components::State::get(&mut env.framework_state).audio_component_instances;
+    let result = if let Some(audio_unit) = audio_units.get_mut(&in_unit) {
+        audio_unit
+            .render_notify_callbacks
+            .push(AURenderCallbackStruct {
+                input_proc: in_proc,
+                input_proc_ref_con: in_ref_con,
+            });
+        0
+    } else {
+        paramErr
+    };
     log_dbg!(
         "AudioUnitAddRenderNotify({:?}, {:?}, {:?}) -> {:?}",
         in_unit,
@@ -86,6 +99,29 @@ fn AudioUnitAddRenderNotify(
         result
     );
     result
+}
+
+fn AudioUnitRender(
+    env: &mut Environment,
+    in_unit: AudioUnit,
+    io_action_flags: MutPtr<u32>,
+    _in_time_stamp: ConstVoidPtr,
+    _in_output_bus_number: AudioUnitElement,
+    _in_number_frames: u32,
+    _io_data: MutVoidPtr,
+) -> OSStatus {
+    // RemoteIO rendering is driven by the host run loop in touchHLE. Apps that
+    // call this from a render-notify callback must not recursively enter it.
+    if !audio_components::State::get(&mut env.framework_state)
+        .audio_component_instances
+        .contains_key(&in_unit)
+    {
+        return paramErr;
+    }
+    if !io_action_flags.is_null() {
+        env.mem.write(io_action_flags, 0u32);
+    }
+    0
 }
 
 fn AudioUnitInitialize(env: &mut Environment, in_unit: AudioUnit) -> OSStatus {
@@ -183,6 +219,12 @@ fn AudioUnitGetProperty(
         .unwrap();
 
     match in_id {
+        kAudioOutputUnitProperty_IsRunning => {
+            assert_eq!(env.mem.read(io_data_size), guest_size_of::<u32>());
+            env.mem
+                .write(out_data.cast(), u32::from(host_object.started));
+            env.mem.write(io_data_size.cast(), guest_size_of::<u32>());
+        }
         kAudioUnitProperty_MaximumFramesPerSlice => {
             assert_eq!(env.mem.read(io_data_size), guest_size_of::<u32>());
             let max_frames: u32 = host_object.maximum_frames_per_slice;
@@ -328,7 +370,7 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
 
     let input_stream_format = audio_unit_host_object.input_stream_format;
     let output_stream_format = audio_unit_host_object.output_stream_format;
-    let stream_format = if input_stream_format.is_some()
+    let mut stream_format = if input_stream_format.is_some()
         && output_stream_format.is_some()
         && input_stream_format != output_stream_format
     {
@@ -341,13 +383,36 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
         input_stream_format
             .unwrap_or(output_stream_format.unwrap_or(audio_unit_host_object.global_stream_format))
     };
+    if !is_supported_audio_format(&stream_format)
+        && stream_format.format_id == kAudioFormatLinearPCM
+        && stream_format.frames_per_packet == 1
+        && stream_format.bytes_per_packet == 4
+        && stream_format.bytes_per_frame == 4
+        && stream_format.channels_per_frame == 2
+    {
+        // The old RemoteIO default format has an internally inconsistent
+        // description (two 32-bit channels but only four bytes per frame).
+        // A 16-bit packed stereo buffer is the only representation matching
+        // its declared frame size, so normalize it before the OpenAL bridge
+        // allocates and decodes the guest callback buffer.
+        log_once!(
+            "Normalizing a malformed legacy RemoteIO PCM default to packed stereo 16-bit PCM."
+        );
+        stream_format.format_flags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
+        stream_format.bits_per_channel = 16;
+    }
     let sample_rate = if let Some(input_stream_format) = input_stream_format {
         input_stream_format.sample_rate
-    } else {
-        assert!(output_stream_format.is_some());
+    } else if output_stream_format.is_some() {
         // TODO: confirm that this is the general behaviour
         // (and not only RE4 thing)
         current_hardware_sample_rate
+    } else {
+        // Some older apps (such as Plants vs. Zombies) configure only the
+        // global format. The global format is also what the OpenAL bridge uses
+        // above, so using its rate keeps the callback frame count and queued
+        // buffer data consistent without requiring an output-scope format.
+        audio_unit_host_object.global_stream_format.sample_rate
     };
 
     assert!(is_supported_audio_format(&stream_format));
@@ -384,7 +449,7 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
     let buffer_size = number_frames * actual_bytes_per_frame;
 
     // Alloc callback arguments
-    let action_flags = env.mem.alloc_and_write(0);
+    let action_flags = env.mem.alloc_and_write(kAudioUnitRenderAction_PreRender);
 
     let (audio_buffer_list, buffer1Data, buffer2Data): (
         MutVoidPtr,
@@ -432,22 +497,64 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
         )
     };
 
-    // Run render callback
-    let AURenderCallbackStruct {
-        input_proc: inputProc,
-        input_proc_ref_con: inputProcRefCon,
-    } = audio_unit_host_object.render_callback.unwrap();
-    let () = inputProc.call_from_host(
-        env,
-        (
-            inputProcRefCon,
-            action_flags,
-            nil.cast_void().cast_const(),
-            0u32,
-            number_frames,
-            audio_buffer_list,
-        ),
-    );
+    // A render-notify callback observes each unit render before and after the
+    // normal input callback. Unlike an input callback, it is not registered as
+    // a property and multiple callbacks may be present.
+    let render_callback = audio_unit_host_object.render_callback;
+    let render_notify_callbacks = audio_unit_host_object.render_notify_callbacks.clone();
+    for AURenderCallbackStruct {
+        input_proc,
+        input_proc_ref_con,
+    } in render_notify_callbacks.iter().copied()
+    {
+        let () = input_proc.call_from_host(
+            env,
+            (
+                input_proc_ref_con,
+                action_flags,
+                nil.cast_void().cast_const(),
+                0u32,
+                number_frames,
+                audio_buffer_list,
+            ),
+        );
+    }
+    if let Some(AURenderCallbackStruct {
+        input_proc,
+        input_proc_ref_con,
+    }) = render_callback
+    {
+        let () = input_proc.call_from_host(
+            env,
+            (
+                input_proc_ref_con,
+                action_flags,
+                nil.cast_void().cast_const(),
+                0u32,
+                number_frames,
+                audio_buffer_list,
+            ),
+        );
+    }
+    env.mem
+        .write(action_flags, kAudioUnitRenderAction_PostRender);
+    for AURenderCallbackStruct {
+        input_proc,
+        input_proc_ref_con,
+    } in render_notify_callbacks.iter().copied()
+    {
+        let () = input_proc.call_from_host(
+            env,
+            (
+                input_proc_ref_con,
+                action_flags,
+                nil.cast_void().cast_const(),
+                0u32,
+                number_frames,
+                audio_buffer_list,
+            ),
+        );
+    }
 
     let at_state = &mut env.framework_state.audio_toolbox;
     let context = at_state
@@ -512,6 +619,7 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioUnitAddRenderNotify(_, _, _)),
+    export_c_func!(AudioUnitRender(_, _, _, _, _, _)),
     export_c_func!(AudioUnitInitialize(_)),
     export_c_func!(AudioUnitUninitialize(_)),
     export_c_func!(AudioUnitSetProperty(_, _, _, _, _, _)),

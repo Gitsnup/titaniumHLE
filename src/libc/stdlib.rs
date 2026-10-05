@@ -38,6 +38,15 @@ fn malloc(env: &mut Environment, size: GuestUSize) -> MutVoidPtr {
     env.mem.alloc(size)
 }
 
+/// Compatibility implementation for old ARMv6 C/C++ runtimes that request
+/// heap space through `_sbrk` instead of the exported malloc family.
+fn sbrk(env: &mut Environment, increment: i32) -> MutVoidPtr {
+    if increment < 0 {
+        return Ptr::from_bits(u32::MAX);
+    }
+    env.mem.alloc(increment as GuestUSize)
+}
+
 fn malloc_size(env: &mut Environment, ptr: ConstVoidPtr) -> GuestUSize {
     env.mem.malloc_size(ptr)
 }
@@ -657,6 +666,7 @@ fn fcvt(
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(malloc(_)),
+    export_c_func!(sbrk(_)),
     export_c_func!(malloc_size(_)),
     export_c_func!(calloc(_, _)),
     export_c_func!(valloc(_)),

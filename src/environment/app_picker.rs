@@ -42,11 +42,18 @@ use std::path::{Path, PathBuf};
 struct AppInfo {
     path: PathBuf,
     display_name: String,
+    architecture: AppArchitecture,
     icon: Option<Image>,
     /// `NSString*`
     display_name_ns_string: Option<id>,
     /// `UIImage*`
     icon_ui_image: Option<id>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AppArchitecture {
+    Arm32,
+    Arm64,
 }
 
 pub fn app_picker(options: Options) -> Result<(PathBuf, Vec<String>), String> {
@@ -105,6 +112,14 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
 
         // TODO: what if this crashes?
         let display_name = bundle.display_name().to_owned();
+        let executable = fs
+            .read(bundle.executable_path())
+            .map_err(|e| std::io::Error::other(format!("couldn't read executable: {e:?}")))?;
+        let architecture = if crate::arm64::detect_arm64_executable(&executable) {
+            AppArchitecture::Arm64
+        } else {
+            AppArchitecture::Arm32
+        };
 
         let icon = match bundle.load_icon(&fs) {
             Ok(icon) => Some(icon),
@@ -117,6 +132,7 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
         apps.push(AppInfo {
             path: app_path,
             display_name,
+            architecture,
             icon,
             display_name_ns_string: None,
             icon_ui_image: None,
@@ -168,6 +184,8 @@ struct AppPickerDelegateHostObject {
     error_popups: Option<bool>,
     quick_options_prev_page: bool,
     quick_options_next_page: bool,
+    arm32_apps: bool,
+    arm64_apps: bool,
     /// Index into the selected app's settings toggles, or `usize::MAX` if none.
     /// The switch that was flipped, if any.
     setting_toggled: id,
@@ -357,6 +375,12 @@ const CLASSES: ClassExports = objc_classes! {
 }
 - (())quickOptionsNextPage {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_next_page = true;
+}
+- (())arm32Apps {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).arm32_apps = true;
+}
+- (())arm64Apps {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).arm64_apps = true;
 }
 
 - (())addGame {
@@ -594,6 +618,11 @@ fn app_picker_inner(
 
     let divider = app_frame.size.height - 100.0;
 
+    let mut selected_architecture = AppArchitecture::Arm32;
+    let mut selected_app_indices = match &apps {
+        Ok(apps) => app_indices_for_architecture(apps, selected_architecture),
+        Err(_) => Vec::new(),
+    };
     let mut icon_grid_stuff = match &mut apps {
         Ok(ref mut apps) => {
             let mut icon_grid_stuff = make_icon_grid(
@@ -601,10 +630,10 @@ fn app_picker_inner(
                 delegate,
                 main_view,
                 app_frame,
-                apps.len(),
+                selected_app_indices.len(),
                 have_wallpaper,
             );
-            update_icon_grid(env, &mut icon_grid_stuff, apps, 0);
+            update_icon_grid(env, &mut icon_grid_stuff, apps, &selected_app_indices, 0);
             Some(icon_grid_stuff)
         }
         Err(e) => {
@@ -806,6 +835,7 @@ fn app_picker_inner(
                         env,
                         icon_grid_stuff.as_mut().unwrap(),
                         apps.as_mut().unwrap(),
+                        &selected_app_indices,
                         page_idx,
                     );
                 }
@@ -864,6 +894,11 @@ fn app_picker_inner(
                     &stuff.tilt_sensitivity_buttons,
                     quick_options_tilt_sensitivity,
                 );
+                update_quick_option_buttons(
+                    env,
+                    &stuff.architecture_buttons,
+                    usize::from(selected_architecture == AppArchitecture::Arm64),
+                );
             }
             let stuff = quick_options_stuff.as_ref().unwrap();
             () = msg![env; (stuff.main_view) setHidden:false];
@@ -885,197 +920,247 @@ fn app_picker_inner(
                     update_quick_options_page(env, stuff, quick_options_page);
                 }
             }
-        } else if let Some(enabled) = std::mem::take(&mut host_obj.print_fps) {
-            quick_options_print_fps = enabled;
-        } else if let Some(enabled) = std::mem::take(&mut host_obj.force_composition) {
-            quick_options_force_composition = enabled;
-        } else if let Some(enabled) = std::mem::take(&mut host_obj.ignore_gl_errors) {
-            quick_options_ignore_gl_errors = enabled;
-        } else if let Some(enabled) = std::mem::take(&mut host_obj.error_popups) {
-            quick_options_error_popups = enabled;
-        } else if host_obj.setting_toggled != nil {
-            let switch = std::mem::replace(&mut host_obj.setting_toggled, nil);
-            let value = host_obj.setting_toggled_value;
-            let idx = quick_options_stuff
-                .as_ref()
-                .and_then(|stuff| stuff.app_settings.index_of_switch(switch));
-            // Mirror what the system Settings app does: write the value the
-            // app asked for, flush it to disk, then leave (apps read these
-            // preferences at launch, so the new value applies next run).
-            if let Some(entry) = idx.and_then(|i| {
-                quick_options_stuff
-                    .as_ref()
-                    .and_then(|stuff| stuff.app_settings.toggles.get(i))
-            }) {
-                // The picker environment has a fake bundle and filesystem, so
-                // the value can't go through the guest's NSUserDefaults here:
-                // write it into the app's own sandbox host-side instead. The
-                // app reads it from there at launch, so stay in the picker.
-                if let Err(e) = crate::environment::settings_bundle::write_app_pref(
-                    &entry.app_path,
-                    &entry.toggle.key,
-                    if value {
-                        &entry.toggle.true_value
-                    } else {
-                        &entry.toggle.false_value
-                    },
-                ) {
-                    echo!("{e}");
+        } else {
+            let switch_to_arm32 = std::mem::take(&mut host_obj.arm32_apps);
+            let switch_to_arm64 = std::mem::take(&mut host_obj.arm64_apps);
+            if switch_to_arm32 || switch_to_arm64 {
+                let architecture = if switch_to_arm64 {
+                    AppArchitecture::Arm64
+                } else {
+                    AppArchitecture::Arm32
+                };
+                selected_architecture = architecture;
+                if let Ok(all_apps) = apps.as_mut() {
+                    selected_app_indices = app_indices_for_architecture(all_apps, architecture);
+                    if let Some(stuff) = &mut icon_grid_stuff {
+                        stuff.pages = make_icon_grid_pages(
+                            selected_app_indices.len(),
+                            stuff.icon_buttons_and_labels.len(),
+                        );
+                        update_icon_grid(env, stuff, all_apps, &selected_app_indices, 0);
+                    }
                 }
+                if let Some(stuff) = &quick_options_stuff {
+                    update_quick_option_buttons(
+                        env,
+                        &stuff.architecture_buttons,
+                        usize::from(selected_architecture == AppArchitecture::Arm64),
+                    );
+                    () = msg![env; (stuff.main_view) setHidden:true];
+                }
+            } else if let Some(enabled) = std::mem::take(&mut host_obj.print_fps) {
+                quick_options_print_fps = enabled;
+            } else if let Some(enabled) = std::mem::take(&mut host_obj.force_composition) {
+                quick_options_force_composition = enabled;
+            } else if let Some(enabled) = std::mem::take(&mut host_obj.ignore_gl_errors) {
+                quick_options_ignore_gl_errors = enabled;
+            } else if let Some(enabled) = std::mem::take(&mut host_obj.error_popups) {
+                quick_options_error_popups = enabled;
+            } else if host_obj.setting_toggled != nil {
+                let switch = std::mem::replace(&mut host_obj.setting_toggled, nil);
+                let value = host_obj.setting_toggled_value;
+                let idx = quick_options_stuff
+                    .as_ref()
+                    .and_then(|stuff| stuff.app_settings.index_of_switch(switch));
+                // Mirror what the system Settings app does: write the value the
+                // app asked for, flush it to disk, then leave (apps read these
+                // preferences at launch, so the new value applies next run).
+                if let Some(entry) = idx.and_then(|i| {
+                    quick_options_stuff
+                        .as_ref()
+                        .and_then(|stuff| stuff.app_settings.toggles.get(i))
+                }) {
+                    // The picker environment has a fake bundle and filesystem,
+                    // so the value can't go through the guest's NSUserDefaults:
+                    // write it into the app's own sandbox host-side instead.
+                    // The app reads it from there at launch, so stay in the
+                    // picker.
+                    if let Err(e) = crate::environment::settings_bundle::write_app_pref(
+                        &entry.app_path,
+                        &entry.toggle.key,
+                        if value {
+                            &entry.toggle.true_value
+                        } else {
+                            &entry.toggle.false_value
+                        },
+                    ) {
+                        echo!("{e}");
+                    }
+                }
+            } else if std::mem::take(&mut host_obj.scale_hack_default) {
+                quick_options_scale_hack = None;
+                if let Some(stuff) = &quick_options_stuff {
+                    update_scale_hack_buttons(
+                        env,
+                        &stuff.scale_hack_buttons,
+                        quick_options_scale_hack,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.scale_hack1) {
+                quick_options_scale_hack = Some(NonZeroU32::new(1).unwrap());
+                if let Some(stuff) = &quick_options_stuff {
+                    update_scale_hack_buttons(
+                        env,
+                        &stuff.scale_hack_buttons,
+                        quick_options_scale_hack,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.scale_hack2) {
+                quick_options_scale_hack = Some(NonZeroU32::new(2).unwrap());
+                if let Some(stuff) = &quick_options_stuff {
+                    update_scale_hack_buttons(
+                        env,
+                        &stuff.scale_hack_buttons,
+                        quick_options_scale_hack,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.scale_hack3) {
+                quick_options_scale_hack = Some(NonZeroU32::new(3).unwrap());
+                if let Some(stuff) = &quick_options_stuff {
+                    update_scale_hack_buttons(
+                        env,
+                        &stuff.scale_hack_buttons,
+                        quick_options_scale_hack,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.scale_hack4) {
+                quick_options_scale_hack = Some(NonZeroU32::new(4).unwrap());
+                if let Some(stuff) = &quick_options_stuff {
+                    update_scale_hack_buttons(
+                        env,
+                        &stuff.scale_hack_buttons,
+                        quick_options_scale_hack,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.orientation_default) {
+                quick_options_orientation = None;
+                if let Some(stuff) = &quick_options_stuff {
+                    update_orientation_buttons(
+                        env,
+                        &stuff.orientation_buttons,
+                        quick_options_orientation,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.orientation_portrait_upside_down) {
+                quick_options_orientation = Some(DeviceOrientation::PortraitUpsideDown);
+                if let Some(stuff) = &quick_options_stuff {
+                    update_orientation_buttons(
+                        env,
+                        &stuff.orientation_buttons,
+                        quick_options_orientation,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.orientation_landscape_left) {
+                quick_options_orientation = Some(DeviceOrientation::LandscapeLeft);
+                if let Some(stuff) = &quick_options_stuff {
+                    update_orientation_buttons(
+                        env,
+                        &stuff.orientation_buttons,
+                        quick_options_orientation,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.orientation_landscape_right) {
+                quick_options_orientation = Some(DeviceOrientation::LandscapeRight);
+                if let Some(stuff) = &quick_options_stuff {
+                    update_orientation_buttons(
+                        env,
+                        &stuff.orientation_buttons,
+                        quick_options_orientation,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.region_pulldown_toggle) {
+                if let Some(stuff) = &quick_options_stuff {
+                    toggle_region_pulldown(env, &stuff.region_pulldown);
+                }
+            } else if std::mem::take(&mut host_obj.region_pulldown_close) {
+                if let Some(stuff) = &quick_options_stuff {
+                    set_region_pulldown_visible(env, &stuff.region_pulldown, false);
+                }
+            } else if std::mem::take(&mut host_obj.region_default) {
+                quick_options_country_code = None;
+                if let Some(stuff) = &quick_options_stuff {
+                    update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
+                }
+            } else if std::mem::take(&mut host_obj.region_us) {
+                quick_options_country_code = Some("US");
+                if let Some(stuff) = &quick_options_stuff {
+                    update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
+                }
+            } else if std::mem::take(&mut host_obj.region_gb) {
+                quick_options_country_code = Some("GB");
+                if let Some(stuff) = &quick_options_stuff {
+                    update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
+                }
+            } else if std::mem::take(&mut host_obj.region_jp) {
+                quick_options_country_code = Some("JP");
+                if let Some(stuff) = &quick_options_stuff {
+                    update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
+                }
+            } else if std::mem::take(&mut host_obj.region_fr) {
+                quick_options_country_code = Some("FR");
+                if let Some(stuff) = &quick_options_stuff {
+                    update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
+                }
+            } else if std::mem::take(&mut host_obj.region_de) {
+                quick_options_country_code = Some("DE");
+                if let Some(stuff) = &quick_options_stuff {
+                    update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
+                }
+            } else if std::mem::take(&mut host_obj.tilt_sensitivity_default) {
+                quick_options_tilt_sensitivity = None;
+                if let Some(stuff) = &quick_options_stuff {
+                    update_tilt_sensitivity_buttons(
+                        env,
+                        &stuff.tilt_sensitivity_buttons,
+                        quick_options_tilt_sensitivity,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.tilt_sensitivity_half) {
+                quick_options_tilt_sensitivity = Some(0.5);
+                if let Some(stuff) = &quick_options_stuff {
+                    update_tilt_sensitivity_buttons(
+                        env,
+                        &stuff.tilt_sensitivity_buttons,
+                        quick_options_tilt_sensitivity,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.tilt_sensitivity_three_quarters) {
+                quick_options_tilt_sensitivity = Some(0.75);
+                if let Some(stuff) = &quick_options_stuff {
+                    update_tilt_sensitivity_buttons(
+                        env,
+                        &stuff.tilt_sensitivity_buttons,
+                        quick_options_tilt_sensitivity,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.tilt_sensitivity_one_and_a_half) {
+                quick_options_tilt_sensitivity = Some(1.5);
+                if let Some(stuff) = &quick_options_stuff {
+                    update_tilt_sensitivity_buttons(
+                        env,
+                        &stuff.tilt_sensitivity_buttons,
+                        quick_options_tilt_sensitivity,
+                    );
+                }
+            } else if std::mem::take(&mut host_obj.tilt_sensitivity_double) {
+                quick_options_tilt_sensitivity = Some(2.0);
+                if let Some(stuff) = &quick_options_stuff {
+                    update_tilt_sensitivity_buttons(
+                        env,
+                        &stuff.tilt_sensitivity_buttons,
+                        quick_options_tilt_sensitivity,
+                    );
+                }
+            } else if let Some(enabled) = std::mem::take(&mut host_obj.analog_stick_tilt_controls) {
+                quick_options_analog_stick_tilt_controls = enabled;
+            } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
+                quick_options_network = enabled;
+            } else if let Some(fullscreen) = std::mem::take(&mut host_obj.fullscreen) {
+                quick_options_fullscreen = match fullscreen {
+                    false => None,
+                    true => Some(()),
+                };
             }
-        } else if std::mem::take(&mut host_obj.scale_hack_default) {
-            quick_options_scale_hack = None;
-            if let Some(stuff) = &quick_options_stuff {
-                update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
-            }
-        } else if std::mem::take(&mut host_obj.scale_hack1) {
-            quick_options_scale_hack = Some(NonZeroU32::new(1).unwrap());
-            if let Some(stuff) = &quick_options_stuff {
-                update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
-            }
-        } else if std::mem::take(&mut host_obj.scale_hack2) {
-            quick_options_scale_hack = Some(NonZeroU32::new(2).unwrap());
-            if let Some(stuff) = &quick_options_stuff {
-                update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
-            }
-        } else if std::mem::take(&mut host_obj.scale_hack3) {
-            quick_options_scale_hack = Some(NonZeroU32::new(3).unwrap());
-            if let Some(stuff) = &quick_options_stuff {
-                update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
-            }
-        } else if std::mem::take(&mut host_obj.scale_hack4) {
-            quick_options_scale_hack = Some(NonZeroU32::new(4).unwrap());
-            if let Some(stuff) = &quick_options_stuff {
-                update_scale_hack_buttons(env, &stuff.scale_hack_buttons, quick_options_scale_hack);
-            }
-        } else if std::mem::take(&mut host_obj.orientation_default) {
-            quick_options_orientation = None;
-            if let Some(stuff) = &quick_options_stuff {
-                update_orientation_buttons(
-                    env,
-                    &stuff.orientation_buttons,
-                    quick_options_orientation,
-                );
-            }
-        } else if std::mem::take(&mut host_obj.orientation_portrait_upside_down) {
-            quick_options_orientation = Some(DeviceOrientation::PortraitUpsideDown);
-            if let Some(stuff) = &quick_options_stuff {
-                update_orientation_buttons(
-                    env,
-                    &stuff.orientation_buttons,
-                    quick_options_orientation,
-                );
-            }
-        } else if std::mem::take(&mut host_obj.orientation_landscape_left) {
-            quick_options_orientation = Some(DeviceOrientation::LandscapeLeft);
-            if let Some(stuff) = &quick_options_stuff {
-                update_orientation_buttons(
-                    env,
-                    &stuff.orientation_buttons,
-                    quick_options_orientation,
-                );
-            }
-        } else if std::mem::take(&mut host_obj.orientation_landscape_right) {
-            quick_options_orientation = Some(DeviceOrientation::LandscapeRight);
-            if let Some(stuff) = &quick_options_stuff {
-                update_orientation_buttons(
-                    env,
-                    &stuff.orientation_buttons,
-                    quick_options_orientation,
-                );
-            }
-        } else if std::mem::take(&mut host_obj.region_pulldown_toggle) {
-            if let Some(stuff) = &quick_options_stuff {
-                toggle_region_pulldown(env, &stuff.region_pulldown);
-            }
-        } else if std::mem::take(&mut host_obj.region_pulldown_close) {
-            if let Some(stuff) = &quick_options_stuff {
-                set_region_pulldown_visible(env, &stuff.region_pulldown, false);
-            }
-        } else if std::mem::take(&mut host_obj.region_default) {
-            quick_options_country_code = None;
-            if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
-            }
-        } else if std::mem::take(&mut host_obj.region_us) {
-            quick_options_country_code = Some("US");
-            if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
-            }
-        } else if std::mem::take(&mut host_obj.region_gb) {
-            quick_options_country_code = Some("GB");
-            if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
-            }
-        } else if std::mem::take(&mut host_obj.region_jp) {
-            quick_options_country_code = Some("JP");
-            if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
-            }
-        } else if std::mem::take(&mut host_obj.region_fr) {
-            quick_options_country_code = Some("FR");
-            if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
-            }
-        } else if std::mem::take(&mut host_obj.region_de) {
-            quick_options_country_code = Some("DE");
-            if let Some(stuff) = &quick_options_stuff {
-                update_region_buttons(env, &stuff.region_pulldown, quick_options_country_code);
-            }
-        } else if std::mem::take(&mut host_obj.tilt_sensitivity_default) {
-            quick_options_tilt_sensitivity = None;
-            if let Some(stuff) = &quick_options_stuff {
-                update_tilt_sensitivity_buttons(
-                    env,
-                    &stuff.tilt_sensitivity_buttons,
-                    quick_options_tilt_sensitivity,
-                );
-            }
-        } else if std::mem::take(&mut host_obj.tilt_sensitivity_half) {
-            quick_options_tilt_sensitivity = Some(0.5);
-            if let Some(stuff) = &quick_options_stuff {
-                update_tilt_sensitivity_buttons(
-                    env,
-                    &stuff.tilt_sensitivity_buttons,
-                    quick_options_tilt_sensitivity,
-                );
-            }
-        } else if std::mem::take(&mut host_obj.tilt_sensitivity_three_quarters) {
-            quick_options_tilt_sensitivity = Some(0.75);
-            if let Some(stuff) = &quick_options_stuff {
-                update_tilt_sensitivity_buttons(
-                    env,
-                    &stuff.tilt_sensitivity_buttons,
-                    quick_options_tilt_sensitivity,
-                );
-            }
-        } else if std::mem::take(&mut host_obj.tilt_sensitivity_one_and_a_half) {
-            quick_options_tilt_sensitivity = Some(1.5);
-            if let Some(stuff) = &quick_options_stuff {
-                update_tilt_sensitivity_buttons(
-                    env,
-                    &stuff.tilt_sensitivity_buttons,
-                    quick_options_tilt_sensitivity,
-                );
-            }
-        } else if std::mem::take(&mut host_obj.tilt_sensitivity_double) {
-            quick_options_tilt_sensitivity = Some(2.0);
-            if let Some(stuff) = &quick_options_stuff {
-                update_tilt_sensitivity_buttons(
-                    env,
-                    &stuff.tilt_sensitivity_buttons,
-                    quick_options_tilt_sensitivity,
-                );
-            }
-        } else if let Some(enabled) = std::mem::take(&mut host_obj.analog_stick_tilt_controls) {
-            quick_options_analog_stick_tilt_controls = enabled;
-        } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
-            quick_options_network = enabled;
-        } else if let Some(fullscreen) = std::mem::take(&mut host_obj.fullscreen) {
-            quick_options_fullscreen = match fullscreen {
-                false => None,
-                true => Some(()),
-            };
         }
     };
 
@@ -1144,6 +1229,13 @@ const ICON_SIZE: CGSize = CGSize {
 enum TappedIcon {
     App(usize),
     ChangePage(usize),
+}
+
+fn app_indices_for_architecture(apps: &[AppInfo], architecture: AppArchitecture) -> Vec<usize> {
+    apps.iter()
+        .enumerate()
+        .filter_map(|(idx, app)| (app.architecture == architecture).then_some(idx))
+        .collect()
 }
 
 struct IconGridStuff {
@@ -1237,21 +1329,7 @@ fn make_icon_grid(
     }
 
     // TODO: Use UIScrollView pagination and UIPageControl once available.
-    let mut pages = Vec::new();
-    let mut start = 0;
-    while start < total_app_count {
-        let mut end = start + icon_buttons_and_labels.len();
-        if start > 0 {
-            end -= 1; // one icon space taken by "previous" button
-        }
-        if end < total_app_count {
-            end -= 1; // one icon space taken by "next" button
-        } else {
-            end = total_app_count;
-        }
-        pages.push(start..end);
-        start = end;
-    }
+    let pages = make_icon_grid_pages(total_app_count, icon_buttons_and_labels.len());
 
     IconGridStuff {
         icon_buttons_and_labels,
@@ -1261,6 +1339,28 @@ fn make_icon_grid(
         pages,
         icon_map: HashMap::new(),
     }
+}
+
+fn make_icon_grid_pages(total_app_count: usize, icon_count: usize) -> Vec<std::ops::Range<usize>> {
+    if total_app_count == 0 {
+        return std::iter::once(0..0).collect();
+    }
+    let mut pages = Vec::new();
+    let mut start = 0;
+    while start < total_app_count {
+        let mut end = start + icon_count;
+        if start > 0 {
+            end -= 1;
+        }
+        if end < total_app_count {
+            end -= 1;
+        } else {
+            end = total_app_count;
+        }
+        pages.push(start..end);
+        start = end;
+    }
+    pages
 }
 
 fn make_icon_from_glyph(
@@ -1622,13 +1722,14 @@ fn update_icon_grid(
     env: &mut Environment,
     icon_grid_stuff: &mut IconGridStuff,
     apps: &mut [AppInfo],
+    app_indices: &[usize],
     page_idx: usize,
 ) {
     icon_grid_stuff.icon_map.clear();
 
     let app_idx_range = icon_grid_stuff.pages[page_idx].clone();
     let have_prev_icon = page_idx != 0;
-    let have_next_icon = app_idx_range.end != apps.len();
+    let have_next_icon = app_idx_range.end != app_indices.len();
 
     let mut icon_iter = icon_grid_stuff.icon_buttons_and_labels.iter();
 
@@ -1644,7 +1745,8 @@ fn update_icon_grid(
             .insert(icon_button, TappedIcon::ChangePage(page_idx - 1));
     }
 
-    for app_idx in app_idx_range.clone() {
+    for visible_idx in app_idx_range.clone() {
+        let app_idx = app_indices[visible_idx];
         let app = &mut apps[app_idx];
 
         let &(icon_button, label) = icon_iter.next().unwrap();
@@ -1968,6 +2070,7 @@ struct QuickOptionsStuff {
     orientation_buttons: [id; 4],
     region_pulldown: RegionPulldownStuff,
     tilt_sensitivity_buttons: [id; 5],
+    architecture_buttons: [id; 2],
     app_settings: AppSettingsStuff,
     page_count: usize,
 }
@@ -2048,6 +2151,8 @@ fn setup_quick_options(
         page2.push(RowKind::Switch("fullscreen:", false));
     }
     let page3 = vec![
+        RowKind::Label("App architecture"),
+        RowKind::Buttons(&[("ARM32", "arm32Apps"), ("ARM64", "arm64Apps")], None),
         RowKind::Label("Show FPS (in console)"),
         RowKind::Switch("printFps:", false),
         RowKind::Label("Force composition"),
@@ -2313,6 +2418,7 @@ fn setup_quick_options(
             nav_height,
         ),
         tilt_sensitivity_buttons: button_rows[3][..].try_into().unwrap(),
+        architecture_buttons: button_rows[4][..].try_into().unwrap(),
         app_settings: AppSettingsStuff {
             toggles,
             switches: app_settings_switches,
