@@ -85,6 +85,24 @@ jobs:
               return SDL_SetError("URL opening is unavailable in this Haiku build");
           }
           EOF
+          # The Haiku video backend has three more mismatches with the image's
+          # (old) BeAPI headers, all in sdl2-sys' bundled SDL source:
+          # * HAIKU_OpenURL() in SDL_bvideo.cc also calls the missing
+          #   BUrl::OpenWithPreferredApplication(bool).
+          # * HAIKU_CreateCursor() uses BCursor(BBitmap*, BPoint), which the
+          #   image's Cursor.h lacks; cursor creation degrades to NULL.
+          # * SDL_bopengl.cc references BGL_SHARE_CONTEXT, which the image's
+          #   GLView.h does not declare.
+          SDL_VIDHA="$(dirname "$(dirname "$SDL_SYSURL")")/../video/haiku"
+          test -f "$SDL_VIDHA/SDL_bvideo.cc"
+          perl -pi -e 's/const status_t rc = burl\.OpenWithPreferredApplication\(false\);/return SDL_SetError("URL opening is unavailable in this Haiku build");/' "$SDL_VIDHA/SDL_bvideo.cc"
+          perl -pi -e 's/return \(rc == B_NO_ERROR\) \? 0 : SDL_SetError\("URL open failed \(err=%d\)", \(int\) rc\);/return SDL_SetError("URL opening is unavailable in this Haiku build");/' "$SDL_VIDHA/SDL_bvideo.cc"
+          perl -0777 -pi -e 's/(HAIKU_CreateCursor\(SDL_Surface \* surface, int hot_x, int hot_y\)\s*\{)/$1\n    \/\* The cross-compiler image lacks BCursor(BBitmap*, BPoint); degrade gracefully. \*\/\n    return NULL;/' "$SDL_VIDHA/SDL_bvideo.cc"
+          perl -pi -e 's/new BCursor\(cursorBitmap, BPoint\(hot_x, hot_y\)\)/NULL/' "$SDL_VIDHA/SDL_bvideo.cc"
+          perl -0777 -pi -e 's/#if __GNUC__ > 3(\s*\n\s*if \(_this->gl_config\.share_with_current_context\))/#if __GNUC__ > 3 \&\& defined(BGL_SHARE_CONTEXT)$1/' "$SDL_VIDHA/SDL_bopengl.cc"
+          grep -q "URL opening is unavailable in this Haiku build" "$SDL_VIDHA/SDL_bvideo.cc"
+          grep -q "defined(BGL_SHARE_CONTEXT)" "$SDL_VIDHA/SDL_bopengl.cc"
+          grep -q "return NULL;" "$SDL_VIDHA/SDL_bvideo.cc"
       - name: Get Boost headers
         shell: bash
         run: |
