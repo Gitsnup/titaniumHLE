@@ -27,24 +27,39 @@ pub const CLASSES: ClassExports = objc_classes! {
            returningResponse:(MutPtr<id>)response // NSURLResponse **
                        error:(MutPtr<id>)out_error { // NSError **
     log!(
-        "TODO: [NSURLConnection sendSynchronousRequest:{:?} ('{}') response:{:?} error:{:?}] -> nil",
+        "TODO: [NSURLConnection sendSynchronousRequest:{:?} ('{}') response:{:?} error:{:?}] -> empty",
         request,
         url_string_from_request(env, request),
         response,
         out_error,
     );
-    if !response.is_null() {
-        env.mem.write(response, nil);
+    if request == nil {
+        if !response.is_null() {
+            env.mem.write(response, nil);
+        }
+        if !out_error.is_null() {
+            let domain = ns_string::get_static_str(env, NSURLErrorDomain);
+            let error = msg_class![env; NSError alloc];
+            // TODO: fill userInfo
+            let error = msg![env; error initWithDomain:domain code:NSURLErrorNotConnectedToInternet userInfo:nil];
+            autorelease(env, error);
+            env.mem.write(out_error, error);
+        }
+        nil
+    } else {
+        if !response.is_null() {
+            env.mem.write(response, nil);
+        }
+        if !out_error.is_null() {
+            env.mem.write(out_error, nil);
+        }
+        // Return a valid, empty (NUL-terminated) NSData rather than nil, as
+        // some apps assume the response is always valid.
+        let nul_byte: MutPtr<u8> = env.mem.alloc_and_write(0u8);
+        let nul_byte_void = nul_byte.cast_const().cast_void();
+        let data: id = msg_class![env; NSData dataWithBytes:nul_byte_void length:(1u32)];
+        autorelease(env, data)
     }
-    if !out_error.is_null() {
-        let domain = ns_string::get_static_str(env, NSURLErrorDomain);
-        let error = msg_class![env; NSError alloc];
-        // TODO: fill userInfo
-        let error = msg![env; error initWithDomain:domain code:NSURLErrorNotConnectedToInternet userInfo:nil];
-        autorelease(env, error);
-        env.mem.write(out_error, error);
-    }
-    nil
 }
 
 + (id)connectionWithRequest:(id)request // NSURLRequest *
