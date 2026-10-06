@@ -8,6 +8,12 @@ name: Build TitaniumHLE (Haiku)
 # Known risks (why this job is continue-on-error):
 # * dynarmic has no Haiku-specific exception handler; its POSIX handler may or
 #   may not build/run on Haiku.
+# * The vendored openal-soft requires a modern C++20 toolchain (statement
+#   attributes, std::numbers, span semantics), but the haiku/cross-compiler
+#   image currently provides GCC 5.4.0, which fails on common/alcomplex.cpp.
+#   The bundled SDL2 mismatch workarounds below are applied, so a newer
+#   toolchain (built from git.haiku-os.org/buildtools) should get past SDL;
+#   openal needs the toolchain upgrade, not a source patch.
 # * The vendored SDL2 has a Haiku video backend, but the bundled cross-build
 #   has never been exercised in CI.
 # * The haiku/cross-compiler image is not rebuilt often; if it is ever
