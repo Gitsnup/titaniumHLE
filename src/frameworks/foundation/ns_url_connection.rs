@@ -5,17 +5,11 @@
  */
 //! `NSURLConnection`.
 
-use super::{ns_string, NSInteger};
+use super::ns_string;
 use crate::environment::Environment;
 use crate::mem::MutPtr;
 use crate::objc::{autorelease, id, msg, msg_class, nil, objc_classes, release, ClassExports};
 use std::borrow::Cow;
-
-const NSURLErrorDomain: &str = "NSURLErrorDomain";
-
-/// Our helper type, Foundation just uses ints.
-type NSURLErrorCode = NSInteger;
-const NSURLErrorNotConnectedToInternet: NSURLErrorCode = -1009;
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -33,33 +27,21 @@ pub const CLASSES: ClassExports = objc_classes! {
         response,
         out_error,
     );
-    if request == nil {
-        if !response.is_null() {
-            env.mem.write(response, nil);
-        }
-        if !out_error.is_null() {
-            let domain = ns_string::get_static_str(env, NSURLErrorDomain);
-            let error = msg_class![env; NSError alloc];
-            // TODO: fill userInfo
-            let error = msg![env; error initWithDomain:domain code:NSURLErrorNotConnectedToInternet userInfo:nil];
-            autorelease(env, error);
-            env.mem.write(out_error, error);
-        }
-        nil
-    } else {
-        if !response.is_null() {
-            env.mem.write(response, nil);
-        }
-        if !out_error.is_null() {
-            env.mem.write(out_error, nil);
-        }
-        // Return a valid, empty (NUL-terminated) NSData rather than nil, as
-        // some apps assume the response is always valid.
-        let nul_byte: MutPtr<u8> = env.mem.alloc_and_write(0u8);
-        let nul_byte_void = nul_byte.cast_const().cast_void();
-        let data: id = msg_class![env; NSData dataWithBytes:nul_byte_void length:(1u32)];
-        autorelease(env, data)
+    if !response.is_null() {
+        env.mem.write(response, nil);
     }
+    if !out_error.is_null() {
+        env.mem.write(out_error, nil);
+    }
+    // Return a valid, empty (NUL-terminated) NSData rather than nil, as
+    // some apps assume the response is always valid and dereference it
+    // unconditionally. This must hold even when the request is nil (which
+    // happens when network access is disabled and request creation failed),
+    // so always returning a valid response is the only safe choice here.
+    let nul_byte: MutPtr<u8> = env.mem.alloc_and_write(0u8);
+    let nul_byte_void = nul_byte.cast_const().cast_void();
+    let data: id = msg_class![env; NSData dataWithBytes:nul_byte_void length:(1u32)];
+    autorelease(env, data)
 }
 
 + (id)connectionWithRequest:(id)request // NSURLRequest *
