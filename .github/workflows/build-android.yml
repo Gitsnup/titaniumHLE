@@ -54,7 +54,7 @@ jobs:
       name: Extract Cmake
       run: tar xzvf "cmake-3.31.6-linux-x86_64.tar.gz" -C vendor && mv vendor/cmake-3.31.6-linux-x86_64 vendor/cmake
     - name: Install AArch64 Android Rust toolchain
-      run: rustup target add aarch64-linux-android
+      run: rustup target add aarch64-linux-android x86_64-linux-android
     - name: Install cargo-ndk
       run: cargo install cargo-ndk@3.5.4
     # Gradle version compatibility is a nightmare and we refuse to use gradlew.
