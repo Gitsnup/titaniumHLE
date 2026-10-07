@@ -26,7 +26,10 @@ unsafe impl SafeRead for in_addr {}
 
 fn inet_addr(env: &mut Environment, str: ConstPtr<u8>) -> in_addr_t {
     let inet_addr_str = env.mem.cstr_at_utf8(str).unwrap();
-    let address: Ipv4Addr = inet_addr_str.parse().unwrap();
+    let Ok(address) = inet_addr_str.parse::<Ipv4Addr>() else {
+        log_dbg!("inet_addr({:?}) => INADDR_NONE", inet_addr_str);
+        return u32::MAX;
+    };
     let res = u32::from_le_bytes(address.octets());
     log_dbg!("inet_addr({:?}) => {}", inet_addr_str, res);
     res
@@ -57,7 +60,10 @@ fn inet_pton(env: &mut Environment, af: i32, src: ConstPtr<u8>, dst: MutVoidPtr)
     assert_eq!(af, AF_INET);
     let str = env.mem.cstr_at_utf8(src.cast()).unwrap();
     log_dbg!("inet_pton '{}'", str);
-    let address: Ipv4Addr = str.parse().unwrap();
+    let Ok(address) = str.parse::<Ipv4Addr>() else {
+        log_dbg!("inet_pton: invalid IPv4 address {:?}", str);
+        return 0;
+    };
     let addr = in_addr {
         s_addr: u32::from_le_bytes(address.octets()),
     };

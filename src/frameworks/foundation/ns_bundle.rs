@@ -75,6 +75,15 @@ pub const CLASSES: ClassExports = objc_classes! {
    }
 }
 
++ (id)bundleWithPath:(id)path {
+    let bundle = msg_class![env; _touchHLE_NSBundle_Static alloc];
+    let old_path = env.objc.borrow::<NSBundleHostObject>(bundle).bundle_path;
+    release(env, old_path);
+    retain(env, path);
+    env.objc.borrow_mut::<NSBundleHostObject>(bundle).bundle_path = path;
+    autorelease(env, bundle)
+}
+
 + (id)preferredLocalizationsFromArray:(id)localizations_array { // NSArray<NSString *> *
     let preferredLocalizations = CFBundleCopyPreferredLocalizationsFromArray(env, localizations_array);
     autorelease(env, preferredLocalizations)

@@ -81,6 +81,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)delegate {
     env.objc.borrow::<UIApplicationHostObject>(this).delegate
 }
+
+- (id)domain {
+    get_static_str(env, "UIApplication")
+}
+
 - (())setDelegate:(id)delegate { // something implementing UIApplicationDelegate
     let host_object = env.objc.borrow_mut::<UIApplicationHostObject>(this);
     // This property is quasi-non-retaining: https://stackoverflow.com/a/14271150/736162

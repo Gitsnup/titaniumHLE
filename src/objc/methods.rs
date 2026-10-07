@@ -50,6 +50,14 @@ impl IMP {
     }
 }
 
+pub(super) fn method_getImplementation(_env: &mut Environment, method: IMP) -> IMP {
+    method
+}
+
+pub(super) fn method_getTypeEncoding(env: &mut Environment, _method: IMP) -> ConstPtr<u8> {
+    env.mem.alloc_and_write_cstr(b"v@:").cast_const()
+}
+
 impl GuestArg for IMP {
     const REG_COUNT: usize = <GuestFunction as GuestArg>::REG_COUNT;
     fn from_regs(regs: &[u32]) -> Self {

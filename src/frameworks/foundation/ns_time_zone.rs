@@ -80,6 +80,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow_mut::<NSTimeZoneHostObject>(this).time_zone
 }
 
+- (id)description {
+    msg![env; this name]
+}
+
 - (id)abbreviation {
     // TODO: support zone abbreviations
     ns_string::get_static_str(env, "GMT")

@@ -12,7 +12,7 @@
 //! - Peter Steinberger's [Calling Super at Runtime in Swift](https://steipete.com/posts/calling-super-at-runtime/) explains `objc_msgSendSuper2`
 
 use super::{id, nil, Class, ObjC, IMP, SEL};
-use crate::abi::{CallFromHost, GuestRet};
+use crate::abi::{write_next_arg, CallFromHost, GuestRet};
 use crate::environment::ThreadId;
 use crate::frameworks::foundation::ns_string;
 use crate::libc::pthread::cond::{
@@ -302,6 +302,30 @@ Type mismatch when sending message {} to {:?}!
             is_metaclass,
         }) = host_object.as_any().downcast_ref()
         {
+            let selector_name = selector.as_str(&env.mem);
+            if selector_name == "initialize" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            if is_metaclass && (selector_name == "alloc" || selector_name == "new") {
+                let object = env.objc.alloc_object(
+                    receiver,
+                    Box::new(super::TrivialHostObject),
+                    &mut env.mem,
+                );
+                let mut reg_offset = 0;
+                write_next_arg(&mut reg_offset, env.cpu.regs_mut(), &mut env.mem, object);
+                return;
+            }
+            if !is_metaclass {
+                if selector_name != "release" {
+                    let mut reg_offset = 0;
+                    write_next_arg(&mut reg_offset, env.cpu.regs_mut(), &mut env.mem, receiver);
+                } else {
+                    env.cpu.regs_mut()[0..2].fill(0);
+                }
+                return;
+            }
             panic!(
                 "Class \"{}\" ({:?}) is unimplemented. Call to {} method \"{}\".",
                 name,

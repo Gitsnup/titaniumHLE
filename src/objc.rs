@@ -18,7 +18,9 @@
 //! classes that are both (considering Objective-C's support for inheritance,
 //! categories and dynamic class editing).
 
-use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant, HostDylib};
+use crate::dyld::{
+    export_c_func, export_c_func_aliased, ConstantExports, FunctionExports, HostConstant, HostDylib,
+};
 use crate::objc::messages::ThreadInitializer;
 use crate::MutexId;
 use std::collections::HashMap;
@@ -46,12 +48,13 @@ pub use selectors::{selector, SEL};
 use crate::mem::ConstVoidPtr;
 use crate::Environment;
 use classes::{
-    class_getInstanceSize, class_getMethodImplementation, class_getProperty, class_getSuperclass,
-    class_replaceMethod, objc_getClass, ClassHostObject, FakeClass, UnimplementedClass,
+    class_addMethod, class_getInstanceMethod, class_getInstanceSize, class_getMethodImplementation,
+    class_getProperty, class_getSuperclass, class_replaceMethod, objc_getClass, ClassHostObject,
+    FakeClass, UnimplementedClass,
 };
 pub(crate) use messages::objc_msgSend;
 use messages::{objc_msgSendSuper2, objc_msgSend_stret, MsgSendSignature, MsgSendSuperSignature};
-use methods::method_list_t;
+use methods::{method_getImplementation, method_getTypeEncoding, method_list_t};
 use objects::{objc_object, object_getClass, HostObjectEntry};
 use properties::{ivar_list_t, objc_copyStruct, objc_getProperty, objc_setProperty};
 use selectors::sel_registerName;
@@ -136,10 +139,14 @@ fn _Block_object_dispose(_env: &mut Environment, object: ConstVoidPtr, flags: i3
 
 const FUNCTIONS: FunctionExports = &[
     export_c_func!(class_getInstanceSize(_)),
+    export_c_func!(class_getInstanceMethod(_, _)),
     export_c_func!(class_getSuperclass(_)),
     export_c_func!(class_getProperty(_, _)),
     export_c_func!(class_getMethodImplementation(_, _)),
     export_c_func!(class_replaceMethod(_, _, _, _)),
+    export_c_func!(class_addMethod(_, _, _, _)),
+    export_c_func!(method_getImplementation(_)),
+    export_c_func!(method_getTypeEncoding(_)),
     export_c_func!(objc_msgSend(_, _)),
     export_c_func!(objc_msgSend_stret(_, _, _)),
     export_c_func!(objc_msgSendSuper2(_, _)),
@@ -151,5 +158,6 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_sync_exit(_)),
     export_c_func!(object_getClass(_)),
     export_c_func!(sel_registerName(_)),
+    export_c_func_aliased!("sel_getUid", sel_registerName(_)),
     export_c_func!(_Block_object_dispose(_, _)),
 ];

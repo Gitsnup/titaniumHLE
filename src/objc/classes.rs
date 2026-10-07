@@ -1094,6 +1094,28 @@ pub(super) fn class_replaceMethod(
     existing
 }
 
+pub(super) fn class_addMethod(
+    env: &mut Environment,
+    cls: Class,
+    name: SEL,
+    imp: IMP,
+    types: ConstPtr<u8>,
+) -> bool {
+    let types_copy = strdup(env, types).cast_const();
+    let &mut ClassHostObject {
+        ref mut methods,
+        ref mut guest_method_signatures,
+        ..
+    } = env.objc.borrow_mut(cls);
+    if methods.contains_key(&name) {
+        env.mem.free(types_copy.cast().cast_mut());
+        return false;
+    }
+    methods.insert(name, imp);
+    guest_method_signatures.insert(name, types_copy);
+    true
+}
+
 pub(super) fn class_getMethodImplementation(env: &mut Environment, cls: Class, name: SEL) -> IMP {
     if cls == nil {
         return IMP::guest_null();
@@ -1106,13 +1128,21 @@ pub(super) fn class_getMethodImplementation(env: &mut Environment, cls: Class, n
             ..
         } = env.objc.borrow(class);
         if methods.contains_key(&name) {
-            let method = methods.get(&name).unwrap().clone();
-            assert!(matches!(method, IMP::Guest(_))); // TODO
-            return method;
+            return match methods.get(&name).unwrap() {
+                // Host IMPs cannot be represented as a guest function pointer.
+                // Returning NULL still preserves the query semantics for callers
+                // that only use this API to test whether a method is available.
+                IMP::Host(_) => IMP::guest_null(),
+                IMP::Guest(guest_imp) => IMP::Guest(*guest_imp),
+            };
         } else if next == nil {
             // TODO: currently this returns NULL for unimplemented host methods
             return IMP::guest_null();
         }
         class = next;
     }
+}
+
+pub(super) fn class_getInstanceMethod(env: &mut Environment, cls: Class, name: SEL) -> IMP {
+    class_getMethodImplementation(env, cls, name)
 }
