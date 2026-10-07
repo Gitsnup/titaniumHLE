@@ -652,7 +652,7 @@ impl Dyld {
                 let Some(&(symbol, f)) = f else {
                     panic!("Unexpected SVC #{svc} at {svc_pc:#x}");
                 };
-                log_dbg!("Call to host function, already linked: {}", symbol);
+                log!("Call to host function: {} (at {:#x}, LR {:#x})", symbol, svc_pc, { let _ = svc; 0 });
                 Some(f)
             }
         }

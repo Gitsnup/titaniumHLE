@@ -5,6 +5,8 @@
  */
 
 use crate::dyld::{ConstantExports, HostConstant};
+use crate::frameworks::core_graphics::CGFloat;
+use crate::Environment;
 use crate::frameworks::foundation::{ns_string, NSInteger};
 use crate::objc::{
     autorelease, id, msg, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
@@ -102,6 +104,52 @@ pub const CLASSES: ClassExports = objc_classes! {
 };
 
 pub const CONSTANTS: ConstantExports = &[
+    ("_NSURLErrorDomain", HostConstant::NSString("NSURLErrorDomain")),
+    (
+        "_NSErrorFailingURLStringKey",
+        HostConstant::NSString("NSErrorFailingURLStringKey"),
+    ),
+    (
+        "_UIWindowLevelNormal",
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(1e9f32)
+                .cast()
+                .cast_const()
+        }),
+    ),
+    (
+        "_kABPersonEmailProperty",
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(4u32)
+                .cast()
+                .cast_const()
+        }),
+    ),
+    (
+        "_kABPersonFirstNameProperty",
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(3u32)
+                .cast()
+                .cast_const()
+        }),
+    ),
+    (
+        "_kABPersonLastNameProperty",
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(5u32)
+                .cast()
+                .cast_const()
+        }),
+    ),
+    (
+        "_kCFTypeArrayCallBacks",
+        HostConstant::NullPtr,
+    ),
+    ("___objc_personality_v0", HostConstant::NullPtr),
     (
         "_NSLocalizedDescriptionKey",
         HostConstant::NSString(NSLocalizedDescriptionKey),

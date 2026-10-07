@@ -52,6 +52,10 @@ pub(super) struct ClassHostObject {
     pub(super) instance_size: GuestUSize,
     /// Checks if +initialize has been called yet.
     pub(super) is_initialized: InitializationStatus,
+    /// True if this class was defined by the guest app binary rather than
+    /// implemented by the host. Unimplemented methods on such classes are
+    /// more safely treated as returning nil than as a hard error.
+    pub(super) is_guest_defined: bool,
 }
 impl HostObject for ClassHostObject {}
 
@@ -395,6 +399,7 @@ impl ClassHostObject {
             instance_size: size,
             ivars: HashMap::default(),
             is_initialized: InitializationStatus::NotInitialized,
+            is_guest_defined: false,
         }
     }
 
@@ -423,6 +428,7 @@ impl ClassHostObject {
             instance_size,
             ivars: HashMap::new(),
             is_initialized: InitializationStatus::NotInitialized,
+            is_guest_defined: true,
         };
 
         if !base_methods.is_null() {
@@ -918,6 +924,7 @@ impl ObjC {
                         instance_size: Default::default(),
                         ivars: Default::default(),
                         is_initialized: InitializationStatus::NotInitialized,
+                        is_guest_defined: Default::default(),
                     },
                 );
                 log_dbg!(
@@ -1100,7 +1107,13 @@ pub(super) fn class_addMethod(
     name: SEL,
     imp: IMP,
     types: ConstPtr<u8>,
-) -> bool {
+) -> bool {    log!(
+        "DEBUG class_addMethod: class {} ({}) sel {} imp {:?}",
+        env.objc.get_class_name(cls),
+        if env.objc.borrow::<ClassHostObject>(cls).is_metaclass { "metaclass" } else { "class" },
+        name.as_str(&env.mem),
+        imp
+    );
     let types_copy = strdup(env, types).cast_const();
     let &mut ClassHostObject {
         ref mut methods,

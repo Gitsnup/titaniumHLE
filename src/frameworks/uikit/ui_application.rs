@@ -541,6 +541,10 @@ pub const CONSTANTS: ConstantExports = &[
         "_UIApplicationLaunchOptionsRemoteNotificationKey",
         HostConstant::NSString(UIApplicationLaunchOptionsRemoteNotificationKey),
     ),
+    (
+        "_UIApplicationLaunchOptionsURLKey",
+        HostConstant::NSString("UIApplicationLaunchOptionsURLKey"),
+    ),
 ];
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(UIApplicationMain(_, _, _, _))];

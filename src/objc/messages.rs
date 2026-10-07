@@ -217,12 +217,47 @@ fn objc_msgSend_inner(
         if class == nil {
             assert!(class != orig_class);
 
-            let class_host_object = env.objc.get_host_object(orig_class).unwrap();
+                // Temporary diagnostics: identify the receiver of a message we
+            // cannot dispatch.
+            if let Some(host) = env.objc.get_host_object(receiver) {
+                log!(
+                    "sync msg_send: receiver {:?} selector {} host type {}",
+                    receiver,
+                    selector.as_str(&env.mem),
+                    host.type_name()
+                );
+            }
+        let class_host_object = env.objc.get_host_object(orig_class).unwrap();
             let &super::ClassHostObject {
                 ref name,
                 is_metaclass,
+                is_guest_defined,
                 ..
             } = class_host_object.as_any().downcast_ref().unwrap();
+
+            if is_guest_defined {
+                // Real ObjC would raise NSInvalidArgumentException here. Some
+                // guest classes genuinely only respond to a selector after the
+                // app's own swizzling/categories, and a hard panic prevents
+                // the app's error-handling paths from running, so return nil
+                // instead (this matches the "message to nil" behavior).
+                log!(
+                    "{} {:?} ({}class \"{}\", {:?}){} does not respond to selector \"{}\", returning nil",
+                    if is_metaclass { "Class" } else { "Object" },
+                    receiver,
+                    if is_metaclass { "meta" } else { "" },
+                    name,
+                    orig_class,
+                    if super2.is_some() {
+                        "'s superclass"
+                    } else {
+                        ""
+                    },
+                    selector.as_str(&env.mem),
+                );
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
 
             panic!(
                 "{} {:?} ({}class \"{}\", {:?}){} does not respond to selector \"{}\"!",

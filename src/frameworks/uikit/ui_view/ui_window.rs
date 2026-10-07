@@ -281,4 +281,8 @@ pub const CONSTANTS: ConstantExports = &[
         "_UIKeyboardBoundsUserInfoKey",
         HostConstant::NSString(UIKeyboardBoundsUserInfoKey),
     ),
+    (
+        "_UIWindowLevelNormal",
+        HostConstant::Custom(|env| env.mem.alloc_and_write(0.0f32).cast().cast_const()),
+    ),
 ];
