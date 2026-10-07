@@ -104,19 +104,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 };
 
 pub const CONSTANTS: ConstantExports = &[
-    ("_NSURLErrorDomain", HostConstant::NSString("NSURLErrorDomain")),
     (
         "_NSErrorFailingURLStringKey",
         HostConstant::NSString("NSErrorFailingURLStringKey"),
-    ),
-    (
-        "_UIWindowLevelNormal",
-        HostConstant::Custom(|env| {
-            env.mem
-                .alloc_and_write(1e9f32)
-                .cast()
-                .cast_const()
-        }),
     ),
     (
         "_kABPersonEmailProperty",
