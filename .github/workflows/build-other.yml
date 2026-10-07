@@ -62,7 +62,6 @@ jobs:
         sudo dpkg --add-architecture arm64
         sudo cp /etc/apt/sources.list.d/ubuntu.sources /tmp/ubuntu.sources
         sudo sed -i 's/^Types: deb$/Types: deb\nArchitectures: amd64/' /tmp/ubuntu.sources
-        sudo sed -i '1a Architectures: amd64' /tmp/ubuntu.sources
         cat <<'EOF' | sudo tee -a /tmp/ubuntu.sources > /dev/null
 
         Types: deb
@@ -175,10 +174,13 @@ jobs:
     - name: Check CMake
       shell: bash
       run: cmake --version
-    # Testing would be nice, but parts of the test suite need an x86_64 LLVM
-    # (runs only under emulation) and the test suite hasn't been validated on
-    # this target yet. Just build.
+    # The windows-11-arm label now ships Visual Studio 2026, which the
+    # pinned `cmake` crate (via its `cc` dependency) can't auto-detect.
+    # Point it at the VS 2026 generator explicitly; the crate adds
+    # -AARM64 for the target itself.
     - name: Build
+      env:
+        CMAKE_GENERATOR: Visual Studio 18 2026
       run: cargo build --release
     - name: Create bundle
       shell: bash
