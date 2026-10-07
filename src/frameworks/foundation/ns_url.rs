@@ -13,18 +13,8 @@ use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
     NSZonePtr,
 };
-use crate::dyld::{ConstantExports, HostConstant};
 use crate::Environment;
 use std::borrow::Cow;
-
-pub const CONSTANTS: ConstantExports = &[
-    ("_NSURLErrorDomain", HostConstant::NSString("NSURLErrorDomain")),
-    (
-        "_NSURLErrorFailingURLStringErrorKey",
-        HostConstant::NSString("NSURLErrorFailingURLStringErrorKey"),
-    ),
-];
-
 
 /// It seems like there's two kinds of NSURLs: ones for file paths, and others.
 /// So far only the former is implemented (TODO).

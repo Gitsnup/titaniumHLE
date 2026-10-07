@@ -5,8 +5,6 @@
  */
 
 use crate::dyld::{ConstantExports, HostConstant};
-use crate::frameworks::core_graphics::CGFloat;
-use crate::Environment;
 use crate::frameworks::foundation::{ns_string, NSInteger};
 use crate::objc::{
     autorelease, id, msg, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
@@ -17,6 +15,7 @@ pub type NSErrorDomain = id;
 
 pub const NSCocoaErrorDomain: &str = "NSCocoaErrorDomain";
 pub const NSOSStatusErrorDomain: &str = "NSOSStatusErrorDomain";
+pub const NSURLErrorDomain: &str = "NSURLErrorDomain";
 
 const NSLocalizedDescriptionKey: &str = "NSLocalizedDescriptionKey";
 const NSLocalizedFailureReasonErrorKey: &str = "NSLocalizedFailureReasonErrorKey";
@@ -104,6 +103,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 };
 
 pub const CONSTANTS: ConstantExports = &[
+    ("_NSURLErrorDomain", HostConstant::NSString(NSURLErrorDomain)),
+    (
+        "_NSURLErrorFailingURLStringErrorKey",
+        HostConstant::NSString("NSURLErrorFailingURLStringErrorKey"),
+    ),
     (
         "_NSErrorFailingURLStringKey",
         HostConstant::NSString("NSErrorFailingURLStringKey"),
