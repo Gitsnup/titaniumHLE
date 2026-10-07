@@ -181,6 +181,9 @@ jobs:
     - name: Build
       env:
         CMAKE_GENERATOR: Visual Studio 18 2026
+        # The vendored SDL 2 copy has a `cmake_minimum_required` older than
+        # what recent CMake versions accept by default.
+        CMAKE_POLICY_VERSION_MINIMUM: 3.5
       run: cargo build --release
     - name: Create bundle
       shell: bash

@@ -1142,9 +1142,10 @@ pub(super) fn class_getMethodImplementation(env: &mut Environment, cls: Class, n
         } = env.objc.borrow(class);
         if methods.contains_key(&name) {
             return match methods.get(&name).unwrap() {
-                // Host IMPs cannot be represented as a guest function pointer.
-                // Returning NULL still preserves the query semantics for callers
-                // that only use this API to test whether a method is available.
+                // Host IMPs cannot be represented as a guest function
+                // pointer. Returning NULL still preserves the query
+                // semantics for callers that only use this API to test
+                // whether a method is available.
                 IMP::Host(_) => IMP::guest_null(),
                 IMP::Guest(guest_imp) => IMP::Guest(*guest_imp),
             };
