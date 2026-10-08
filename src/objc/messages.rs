@@ -214,6 +214,9 @@ fn objc_msgSend_inner(
         return;
     }
 
+    if !skip_initialize {
+        maybe_initialize_class(env, receiver);
+    }
 
     // Traverse the chain of superclasses to find the method implementation.
 
@@ -222,17 +225,7 @@ fn objc_msgSend_inner(
         if class == nil {
             assert!(class != orig_class);
 
-                // Temporary diagnostics: identify the receiver of a message we
-            // cannot dispatch.
-            if let Some(host) = env.objc.get_host_object(receiver) {
-                log!(
-                    "sync msg_send: receiver {:?} selector {} host type {}",
-                    receiver,
-                    selector.as_str(&env.mem),
-                    host.type_name()
-                );
-            }
-        let class_host_object = env.objc.get_host_object(orig_class).unwrap();
+            let class_host_object = env.objc.get_host_object(orig_class).unwrap();
             let &super::ClassHostObject {
                 ref name,
                 is_metaclass,
