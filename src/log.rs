@@ -116,6 +116,5 @@ macro_rules! echo_no_panic {
 pub const ENABLED_MODULES: &[&str] = &[
     "touchHLE::frameworks::uikit::ui_touch",
     "touchHLE::window",
-    "touchHLE::objc::classes",
     "touchHLE::libc::zlib",
 ];

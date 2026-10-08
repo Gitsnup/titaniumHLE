@@ -293,6 +293,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("[UIView setAnimationDuration:{:?}]", duration);
     () = msg_class![env; CATransaction setAnimationDuration:duration];
 }
++ (())setAnimationBeginsFromCurrentState:(bool)begins_from_current_state {
+    log_dbg!("[UIView setAnimationBeginsFromCurrentState:{:?}] (unimplemented)", begins_from_current_state);
+}
 
 + (())setAnimationDelay:(NSTimeInterval)delay {
     log_dbg!("[UIView setAnimationDelay:{:?}]", delay);

@@ -184,10 +184,17 @@ fn objc_msgSend_inner(
         receiver
     );
     let message_type_info = env.objc.message_type_info.take();
-
-    if receiver == nil {
-        // https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ObjectiveC/Chapters/ocObjectsClasses.html#//apple_ref/doc/uid/TP30001163-CH11-SW7
-        log_dbg!("[nil {}]", selector.as_str(&env.mem));
+    // The app may pass a non-object value (e.g. a raw BOOL like 1) as a
+    // receiver. On real hardware that's undefined behaviour that often
+    // "works" by luck; treat it like a message to nil rather than faulting
+    // on the null page when reading the isa pointer. This check must come
+    // before any dereference of the receiver.
+    if receiver.to_bits() < 0x1000 {
+        log_dbg!(
+            "[bogus receiver {:?} {}]",
+            receiver,
+            selector.as_str(&env.mem)
+        );
         env.cpu.regs_mut()[0..2].fill(0);
         return;
     }
@@ -206,9 +213,7 @@ fn objc_msgSend_inner(
         env.cpu.regs_mut()[0..2].fill(0);
         return;
     }
-    if !skip_initialize {
-        maybe_initialize_class(env, receiver);
-    }
+
 
     // Traverse the chain of superclasses to find the method implementation.
 
