@@ -222,6 +222,15 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+- (())removeCharactersInString:(id)string { // NSString *
+    assert!(!env.objc.borrow::<CharacterSetHostObject>(this).inverted); // TODO
+    let length: NSUInteger = msg![env; string length];
+    for i in 0..length {
+        let c = msg![env; string characterAtIndex:i];
+        env.objc.borrow_mut::<CharacterSetHostObject>(this).set.remove(&c);
+    }
+}
+
 @end
 
 };

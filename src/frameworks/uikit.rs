@@ -96,6 +96,7 @@ pub struct State {
     ui_graphics: ui_graphics::State,
     ui_image: ui_image::State,
     ui_screen: ui_screen::State,
+    ui_pasteboard: ui_pasteboard::State,
     ui_touch: ui_touch::State,
     pub ui_view: ui_view::State,
     ui_responder: ui_responder::State,

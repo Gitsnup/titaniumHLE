@@ -48,6 +48,9 @@ pub const NSMacOSRomanStringEncoding: NSUInteger = 30;
 pub const NSUTF16StringEncoding: NSUInteger = NSUnicodeStringEncoding;
 pub const NSUTF16BigEndianStringEncoding: NSUInteger = 0x90000100;
 pub const NSUTF16LittleEndianStringEncoding: NSUInteger = 0x94000100;
+pub const NSUTF32StringEncoding: NSUInteger = 0x8C000100;
+pub const NSUTF32BigEndianStringEncoding: NSUInteger = 0x98000100;
+pub const NSUTF32LittleEndianStringEncoding: NSUInteger = 0x9C000100;
 
 pub type NSStringCompareOptions = NSUInteger;
 pub const NSCaseInsensitiveSearch: NSUInteger = 1;
@@ -170,6 +173,36 @@ impl StringHostObject {
                         .map(|chunk| u16::from_le_bytes(chunk.try_into().unwrap()))
                         .collect()
                 })
+            }
+            NSUTF32StringEncoding
+            | NSUTF32BigEndianStringEncoding
+            | NSUTF32LittleEndianStringEncoding => {
+                assert!(bytes.len().is_multiple_of(4));
+
+                let is_big_endian = match encoding {
+                    NSUTF32BigEndianStringEncoding => true,
+                    NSUTF32LittleEndianStringEncoding => false,
+                    NSUTF32StringEncoding => match &bytes[0..4] {
+                        [0x00, 0x00, 0xFE, 0xFF] => true,
+                        [0xFF, 0xFE, 0x00, 0x00] => false,
+                        _ => cfg!(target_endian = "big"),
+                    },
+                    _ => unreachable!(),
+                };
+
+                let string: String = bytes
+                    .chunks(4)
+                    .map(|chunk| {
+                        let unit = if is_big_endian {
+                            u32::from_be_bytes(chunk.try_into().unwrap())
+                        } else {
+                            u32::from_le_bytes(chunk.try_into().unwrap())
+                        };
+                        // TODO: real Foundation returns nil on invalid input
+                        char::from_u32(unit).unwrap_or('\u{FFFD}')
+                    })
+                    .collect();
+                StringHostObject::Utf8(Cow::Owned(string))
             }
             _ => panic!("Unimplemented encoding: {encoding:#x}"),
         }

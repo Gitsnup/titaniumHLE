@@ -50,6 +50,8 @@ pub const MPMoviePlayerScalingModeDidChangeNotification: &str =
 // TODO: More notifications?
 const MPMoviePlayerPlaybackDidFinishReasonUserInfoKey: &str =
     "MPMoviePlayerPlaybackDidFinishReasonUserInfoKey";
+const MPMoviePlayerLoadStateDidChangeNotification: &str =
+    "MPMoviePlayerLoadStateDidChangeNotification";
 
 /// `NSNotificationName` values and other constants.
 pub const CONSTANTS: ConstantExports = &[
@@ -68,6 +70,10 @@ pub const CONSTANTS: ConstantExports = &[
     (
         "_MPMoviePlayerPlaybackDidFinishReasonUserInfoKey",
         HostConstant::NSString(MPMoviePlayerPlaybackDidFinishReasonUserInfoKey),
+    ),
+    (
+        "_MPMoviePlayerLoadStateDidChangeNotification",
+        HostConstant::NSString(MPMoviePlayerLoadStateDidChangeNotification),
     ),
 ];
 
@@ -166,6 +172,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // MPMediaPlayback implementation
+- (())prepareToPlay {
+    // No-op: we do not actually play videos.
+}
+
 - (())play {
     log!("TODO: [(MPMoviePlayerController*){:?} play]", this);
     if let Some(old) = env.framework_state.media_player.movie_player.active_player {

@@ -652,7 +652,7 @@ impl Dyld {
                 let Some(&(symbol, f)) = f else {
                     panic!("Unexpected SVC #{svc} at {svc_pc:#x}");
                 };
-                log!("Call to host function: {} (at {:#x}, LR {:#x})", symbol, svc_pc, { let _ = svc; 0 });
+                if false { log!("Call to host function: {} (at {:#x}, LR {:#x})", symbol, svc_pc, { let _ = svc; 0 }); }
                 Some(f)
             }
         }

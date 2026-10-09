@@ -71,6 +71,64 @@ fn CC_SHA1(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) 
     env.mem.bytes_at_mut(md, 20).copy_from_slice(&digest[..]);
     md
 }
+/// RFC 2104 HMAC for hash functions with a 64-byte block size (MD5, SHA-1,
+/// SHA-2 family).
+fn hmac_block64<D: digest::Digest>(key: &[u8], data: &[u8]) -> Vec<u8> {
+    const BLOCK_SIZE: usize = 64;
+    let mut block_key = [0u8; BLOCK_SIZE];
+    if key.len() > BLOCK_SIZE {
+        let mut hasher = D::new();
+        hasher.update(key);
+        let digest = hasher.finalize();
+        block_key[..digest.len()].copy_from_slice(&digest);
+    } else {
+        block_key[..key.len()].copy_from_slice(key);
+    }
+
+    let mut ipad = [0x36u8; BLOCK_SIZE];
+    let mut opad = [0x5cu8; BLOCK_SIZE];
+    for i in 0..BLOCK_SIZE {
+        ipad[i] ^= block_key[i];
+        opad[i] ^= block_key[i];
+    }
+
+    let mut inner = D::new();
+    inner.update(&ipad);
+    inner.update(data);
+    let inner_hash = inner.finalize();
+
+    let mut outer = D::new();
+    outer.update(&opad);
+    outer.update(&inner_hash);
+    outer.finalize().to_vec()
+}
+
+/// `void CCHmac(CCHmacAlgorithm algorithm, const void *key, size_t keyLength,
+/// const void *data, size_t dataLength, void *macOut)`
+fn CCHmac(
+    env: &mut Environment,
+    algorithm: u32,
+    key: ConstVoidPtr,
+    key_length: GuestUSize,
+    data: ConstVoidPtr,
+    data_length: GuestUSize,
+    mac_out: MutVoidPtr,
+) {
+    let key_bytes = env.mem.bytes_at(key.cast(), key_length).to_vec();
+    let data_bytes = env.mem.bytes_at(data.cast(), data_length).to_vec();
+    // kCCHmacAlgSHA1 = 0, kCCHmacAlgMD5 = 1, kCCHmacAlgSHA256 = 2,
+    // kCCHmacAlgSHA384 = 3, kCCHmacAlgSHA512 = 4, kCCHmacAlgSHA224 = 5.
+    // Only the 64-byte-block-size algorithms are supported here.
+    let (mac, mac_len): (Vec<u8>, usize) = match algorithm {
+        0 => (hmac_block64::<Sha1>(&key_bytes, &data_bytes), 20),
+        1 => (hmac_block64::<Md5>(&key_bytes, &data_bytes), 16),
+        _ => panic!("CCHmac: unimplemented algorithm {algorithm}"),
+    };
+    let mac_len_u32: GuestUSize = mac_len.try_into().unwrap();
+    env.mem
+        .bytes_at_mut(mac_out.cast(), mac_len_u32)
+        .copy_from_slice(&mac[..mac_len]);
+}
 
 /// AES block cipher operation, for `CCCrypt` (`kCCAlgorithmAES`).
 enum AesMode {
@@ -263,6 +321,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CC_MD5_Final(_, _)),
     export_c_func!(CC_MD5(_, _, _)),
     export_c_func!(CC_SHA1(_, _, _)),
+    export_c_func!(CCHmac(_, _, _, _, _, _)),
     export_c_func!(CCCrypt(_, _, _, _, _, _, _, _, _, _, _)),
 ];
 

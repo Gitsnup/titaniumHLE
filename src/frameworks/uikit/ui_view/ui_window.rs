@@ -23,6 +23,7 @@ use crate::frameworks::uikit::ui_device::{
     UIDeviceOrientationPortraitUpsideDown,
 };
 use crate::objc::{id, msg, msg_class, msg_super, nil, objc_classes, ClassExports};
+use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct State {
@@ -33,6 +34,9 @@ pub struct State {
     /// The most recent window which received `makeKeyAndVisible` message.
     /// Non-retaining!
     pub key_window: Option<id>,
+    /// Root view controllers set via `setRootViewController:`, per window.
+    /// Non-retaining!
+    pub root_view_controllers: HashMap<id, id>,
 }
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -112,6 +116,32 @@ pub const CLASSES: ClassExports = objc_classes! {
     let center: id = msg_class![env; NSNotificationCenter defaultCenter];
     let notif_name = ns_string::get_static_str(env, UIWindowDidBecomeKeyNotification);
     () = msg![env; center postNotificationName:notif_name object:this userInfo:nil];
+}
+
+- (())setRootViewController:(id)view_controller {
+    log_dbg!("[(UIWindow*){:?} setRootViewController:{:?}]", this, view_controller);
+    let map = &mut env
+        .framework_state
+        .uikit
+        .ui_view
+        .ui_window
+        .root_view_controllers;
+    map.insert(this, view_controller);
+    // Setting the root view controller adds its view to the window.
+    let view: id = msg![env; view_controller view];
+    if view != nil {
+        () = msg![env; this addSubview:view];
+    }
+}
+
+- (id)rootViewController {
+    let map = &env
+        .framework_state
+        .uikit
+        .ui_view
+        .ui_window
+        .root_view_controllers;
+    map.get(&this).copied().unwrap_or(nil)
 }
 
 - (bool)isKeyWindow {

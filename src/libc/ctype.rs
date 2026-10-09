@@ -149,10 +149,23 @@ fn get_default_rune_locale(env: &mut Environment) -> ConstVoidPtr {
         .cast_const()
 }
 
-pub const CONSTANTS: ConstantExports = &[(
-    "__DefaultRuneLocale",
-    HostConstant::Custom(get_default_rune_locale),
-)];
+fn get_mb_cur_max(env: &mut Environment) -> ConstVoidPtr {
+    // MB_CUR_MAX for the C locale is 1.
+    env.mem.alloc_and_write(1u32).cast().cast_const()
+}
+
+fn get_mb_cur_max_l(env: &mut Environment) -> ConstVoidPtr {
+    env.mem.alloc_and_write(1u64).cast().cast_const()
+}
+
+pub const CONSTANTS: ConstantExports = &[
+    (
+        "__DefaultRuneLocale",
+        HostConstant::Custom(get_default_rune_locale),
+    ),
+    ("___mb_cur_max", HostConstant::Custom(get_mb_cur_max)),
+    ("___mb_cur_max_l", HostConstant::Custom(get_mb_cur_max_l)),
+];
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(__tolower(_)),

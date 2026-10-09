@@ -31,6 +31,9 @@ pub const kCFStringEncodingUnicode: CFStringEncoding = 0x100;
 pub const kCFStringEncodingUTF16: CFStringEncoding = kCFStringEncodingUnicode;
 pub const kCFStringEncodingUTF16BE: CFStringEncoding = 0x10000100;
 pub const kCFStringEncodingUTF16LE: CFStringEncoding = 0x14000100;
+pub const kCFStringEncodingUTF32: CFStringEncoding = 0x8C000100;
+pub const kCFStringEncodingUTF32BE: CFStringEncoding = 0x98000100;
+pub const kCFStringEncodingUTF32LE: CFStringEncoding = 0x9C000100;
 pub const kCFStringEncodingISOLatin1: CFStringEncoding = 0x0201;
 
 fn CFStringAppend(
@@ -91,6 +94,9 @@ pub fn CFStringConvertEncodingToNSStringEncoding(
         kCFStringEncodingUTF16 => ns_string::NSUTF16StringEncoding,
         kCFStringEncodingUTF16BE => ns_string::NSUTF16BigEndianStringEncoding,
         kCFStringEncodingUTF16LE => ns_string::NSUTF16LittleEndianStringEncoding,
+        kCFStringEncodingUTF32 => ns_string::NSUTF32StringEncoding,
+        kCFStringEncodingUTF32BE => ns_string::NSUTF32BigEndianStringEncoding,
+        kCFStringEncodingUTF32LE => ns_string::NSUTF32LittleEndianStringEncoding,
         kCFStringEncodingISOLatin1 => ns_string::NSISOLatin1StringEncoding,
         _ => unimplemented!("Unhandled: CFStringEncoding {:#x}", encoding),
     }
@@ -106,6 +112,9 @@ fn CFStringConvertNSStringEncodingToEncoding(
         ns_string::NSUTF16StringEncoding => kCFStringEncodingUTF16,
         ns_string::NSUTF16BigEndianStringEncoding => kCFStringEncodingUTF16BE,
         ns_string::NSUTF16LittleEndianStringEncoding => kCFStringEncodingUTF16LE,
+        ns_string::NSUTF32StringEncoding => kCFStringEncodingUTF32,
+        ns_string::NSUTF32BigEndianStringEncoding => kCFStringEncodingUTF32BE,
+        ns_string::NSUTF32LittleEndianStringEncoding => kCFStringEncodingUTF32LE,
         ns_string::NSISOLatin1StringEncoding => kCFStringEncodingISOLatin1,
         _ => unimplemented!("Unhandled: NSStringEncoding {:#x}", encoding),
     }

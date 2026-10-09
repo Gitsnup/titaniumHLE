@@ -644,6 +644,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     all_keys_common(env, this)
 }
 
+- (id)allValues {
+    let keys_arr: id = msg![env; this allKeys];
+    let count: NSUInteger = msg![env; keys_arr count];
+    let mut values: Vec<id> = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let key: id = msg![env; keys_arr objectAtIndex:i];
+        let value: id = msg![env; this objectForKey:key];
+        retain(env, value);
+        values.push(value);
+    }
+    let res = ns_array::from_vec(env, values);
+    autorelease(env, res)
+}
+
 - (id)keyEnumerator { // NSEnumerator*
     let keys_arr: id = msg![env; this allKeys];
     msg![env; keys_arr objectEnumerator]

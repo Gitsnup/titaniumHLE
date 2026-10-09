@@ -37,6 +37,7 @@ pub mod sched;
 pub mod semaphore;
 pub mod setjmp;
 pub mod signal;
+pub mod stack_chk;
 pub mod stdio;
 pub mod stdlib;
 pub mod string;
@@ -51,7 +52,12 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     path: "/usr/lib/libSystem.B.dylib",
     aliases: &["/usr/lib/libSystem.dylib"],
     class_exports: &[],
-    constant_exports: &[ctype::CONSTANTS, stdio::CONSTANTS, mach::init::CONSTANTS],
+    constant_exports: &[
+        ctype::CONSTANTS,
+        stdio::CONSTANTS,
+        mach::init::CONSTANTS,
+        stack_chk::CONSTANTS,
+    ],
     function_exports: &[
         arpa::inet::FUNCTIONS,
         clocale::FUNCTIONS,
@@ -92,6 +98,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         pthread::once::FUNCTIONS,
         pthread::thread::FUNCTIONS,
         sched::FUNCTIONS,
+        stack_chk::FUNCTIONS,
         semaphore::FUNCTIONS,
         setjmp::FUNCTIONS,
         signal::FUNCTIONS,

@@ -27,8 +27,17 @@ fn CFArrayCreateMutable(
     callbacks: ConstVoidPtr, // TODO, should be `const CFArrayCallBacks*`
 ) -> CFMutableArrayRef {
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
-    assert!(capacity == 0); // TODO: fixed capacity support
-    assert!(callbacks.is_null()); // TODO: support retaining etc
+    if capacity != 0 {
+        log!("TODO: CFArrayCreateMutable called with capacity {} (ignored)", capacity);
+    }
+    // TODO: support retaining etc. The app passes a callbacks struct (often
+    // kCFTypeArrayCallBacks); we ignore it and use non-retaining semantics.
+    if !callbacks.is_null() {
+        log!(
+            "TODO: CFArrayCreateMutable called with non-null callbacks ({:?}); ignoring",
+            callbacks
+        );
+    }
 
     msg_class![env; _touchHLE_NSMutableArray_non_retaining new]
 }

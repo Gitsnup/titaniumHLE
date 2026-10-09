@@ -508,7 +508,16 @@ const UIApplicationDidReceiveMemoryWarningNotification: &str =
 
 /// `UIApplicationLaunchOptionsKey` and `NSNotificationName` values.
 /// (Both types are strings)
+fn get_ui_background_task_invalid(env: &mut Environment) -> crate::mem::ConstVoidPtr {
+    // UIBackgroundTaskInvalid is 0.
+    env.mem.alloc_and_write(0u32).cast().cast_const()
+}
+
 pub const CONSTANTS: ConstantExports = &[
+    (
+        "_UIBackgroundTaskInvalid",
+        HostConstant::Custom(get_ui_background_task_invalid),
+    ),
     (
         "_UIApplicationDidFinishLaunchingNotification",
         HostConstant::NSString(UIApplicationDidFinishLaunchingNotification),

@@ -114,18 +114,54 @@ pub const DYLIB: HostDylib = HostDylib {
     function_exports: &[FUNCTIONS],
 };
 
+fn get_dummy_object(env: &mut Environment) -> ConstVoidPtr {
+    // A dummy non-null pointer for things that need *some* object to exist
+    // (e.g. C++ exception typeinfo, block classes) but where we don't
+    // (yet) implement the real thing.
+    env.mem.alloc_and_write(0u32).cast().cast_const()
+}
+
 const CONSTANTS: ConstantExports = &[
     // We don't use these in our Objective-C runtime, but exporting useless
     // symbols for these silences the warning about the unhandled relocation,
     // and avoids a linker error for the integration tests.
     ("__objc_empty_vtable", HostConstant::NullPtr),
     ("__objc_empty_cache", HostConstant::NullPtr),
+    ("__NSConcreteStackBlock", HostConstant::Custom(get_dummy_object)),
+    ("__NSConcreteGlobalBlock", HostConstant::Custom(get_dummy_object)),
+    ("_OBJC_EHTYPE_id", HostConstant::Custom(get_dummy_object)),
+    (
+        "_OBJC_EHTYPE_$_NSException",
+        HostConstant::Custom(get_dummy_object),
+    ),
 ];
 
 /// Block support is iOS 4+, but it seems like Block Runtime Helpers
 /// could still be called on even if minimal iOS version is set to 3.x?
 ///
 /// ref. <https://clang.llvm.org/docs/Block-ABI-Apple.html#runtime-helper-functions>
+/// Manual retain calls bypassing `objc_msgSend` (common in hand-written or
+/// pre-ARC compiled code).
+fn objc_retain(env: &mut Environment, object: id) -> id {
+    retain(env, object)
+}
+
+fn objc_retainAutoreleasedReturnValue(env: &mut Environment, object: id) -> id {
+    retain(env, object)
+}
+
+fn objc_release(env: &mut Environment, object: id) {
+    release(env, object)
+}
+
+fn objc_autorelease(env: &mut Environment, object: id) -> id {
+    autorelease(env, object)
+}
+
+fn objc_autoreleaseReturnValue(env: &mut Environment, object: id) -> id {
+    autorelease(env, object)
+}
+
 fn _Block_object_dispose(_env: &mut Environment, object: ConstVoidPtr, flags: i32) {
     // `BLOCK_FIELD_IS_BYREF` flag defines an on stack structure holding
     // the __block variable. It is _probably_ safe to ignore.
@@ -154,6 +190,11 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_getProperty(_, _, _, _)),
     export_c_func!(objc_setProperty(_, _, _, _, _, _)),
     export_c_func!(objc_copyStruct(_, _, _, _, _)),
+    export_c_func!(objc_retain(_)),
+    export_c_func!(objc_retainAutoreleasedReturnValue(_)),
+    export_c_func!(objc_release(_)),
+    export_c_func!(objc_autorelease(_)),
+    export_c_func!(objc_autoreleaseReturnValue(_)),
     export_c_func!(objc_sync_enter(_)),
     export_c_func!(objc_sync_exit(_)),
     export_c_func!(object_getClass(_)),

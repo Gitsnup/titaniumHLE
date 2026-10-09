@@ -39,6 +39,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
++ (id)timeZoneWithAbbreviation:(id)abbreviation {
+    // Rather than a full abbreviation database, just handle the common UTC
+    // variants and otherwise treat the abbreviation as a zone name.
+    let abbrev_str = ns_string::to_rust_string(env, abbreviation).into_owned();
+    let zone_name: id = match abbrev_str.as_str() {
+        "UTC" | "GMT" | "Z" => ns_string::get_static_str(env, "GMT"),
+        _ => ns_string::from_rust_string(env, abbrev_str),
+    };
+    msg![env; this timeZoneWithName:zone_name]
+}
+
 + (id)localTimeZone {
     // According to docs, `localTimeZone` is not cached in contrast to
     // `systemTimeZone`

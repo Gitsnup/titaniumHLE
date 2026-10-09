@@ -33,6 +33,14 @@ pub const CONSTANTS: ConstantExports = &[
         "_NSLocaleIdentifier",
         HostConstant::NSString(NSLocaleIdentifier),
     ),
+    (
+        "_NSLocaleCurrencyCode",
+        HostConstant::NSString("currency code"),
+    ),
+    (
+        "_NSLocaleCurrencySymbol",
+        HostConstant::NSString("currency symbol"),
+    ),
 ];
 
 #[derive(Default)]
