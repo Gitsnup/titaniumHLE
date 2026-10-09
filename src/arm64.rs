@@ -84,11 +84,6 @@ fn cond_passes(cond: u32, cpu: &Cpu) -> Result<bool, String> {
 }
 
 fn rotate_right64(value: u64, amount: u64, width: u32) -> u64 {
-    if width == 0 {
-        log!("rotate_right64 width=0 (value {value:#x}, amount {amount:#x}) — no-op");
-        eprintln!("{:?}", std::backtrace::Backtrace::force_capture());
-        return value;
-    }
     if width == 64 {
         value.rotate_right((amount % 64) as u32)
     } else {

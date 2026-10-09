@@ -54,13 +54,6 @@ pub(super) fn method_getImplementation(_env: &mut Environment, method: IMP) -> I
     method
 }
 
-pub(super) fn method_setImplementation(_env: &mut Environment, method: IMP, _new_imp: IMP) -> IMP {
-    // TODO: touchHLE does not track the class that a guest `Method` belongs
-    // to, so the dispatch table cannot be updated here. Just return the old
-    // IMP; apps that only call the new IMP directly will keep working.
-    method
-}
-
 pub(super) fn method_getTypeEncoding(env: &mut Environment, _method: IMP) -> ConstPtr<u8> {
     env.mem.alloc_and_write_cstr(b"v@:").cast_const()
 }

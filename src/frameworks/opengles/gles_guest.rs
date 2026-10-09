@@ -1250,55 +1250,6 @@ fn glGenRenderbuffersOES(env: &mut Environment, n: GLsizei, renderbuffers: MutPt
         unsafe { gles.GenRenderbuffersOES(n, renderbuffers) }
     })
 }
-fn glGenRenderbuffers(env: &mut Environment, n: GLsizei, renderbuffers: MutPtr<GLuint>) {
-    glGenRenderbuffersOES(env, n, renderbuffers)
-}
-fn glGenFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: MutPtr<GLuint>) {
-    glGenFramebuffersOES(env, n, framebuffers)
-}
-fn glBindRenderbuffer(env: &mut Environment, target: GLenum, renderbuffer: GLuint) {
-    glBindRenderbufferOES(env, target, renderbuffer)
-}
-fn glBindFramebuffer(env: &mut Environment, target: GLenum, framebuffer: GLuint) {
-    glBindFramebufferOES(env, target, framebuffer)
-}
-fn glRenderbufferStorage(
-    env: &mut Environment,
-    target: GLenum,
-    internalformat: GLenum,
-    width: GLsizei,
-    height: GLsizei,
-) {
-    glRenderbufferStorageOES(env, target, internalformat, width, height)
-}
-fn glFramebufferRenderbuffer(
-    env: &mut Environment,
-    target: GLenum,
-    attachment: GLenum,
-    renderbuffertarget: GLenum,
-    renderbuffer: GLuint,
-) {
-    glFramebufferRenderbufferOES(env, target, attachment, renderbuffertarget, renderbuffer)
-}
-fn glFramebufferTexture2D(
-    env: &mut Environment,
-    target: GLenum,
-    attachment: GLenum,
-    textarget: GLenum,
-    texture: GLuint,
-    level: GLint,
-) {
-    glFramebufferTexture2DOES(env, target, attachment, textarget, texture, level)
-}
-fn glCheckFramebufferStatus(env: &mut Environment, target: GLenum) -> GLenum {
-    glCheckFramebufferStatusOES(env, target)
-}
-fn glDeleteRenderbuffers(env: &mut Environment, n: GLsizei, renderbuffers: ConstPtr<GLuint>) {
-    glDeleteRenderbuffersOES(env, n, renderbuffers)
-}
-fn glDeleteFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: ConstPtr<GLuint>) {
-    glDeleteFramebuffersOES(env, n, framebuffers)
-}
 fn glIsFramebufferOES(env: &mut Environment, framebuffer: GLuint) -> GLboolean {
     with_ctx_and_mem(env, |gles, _mem| unsafe {
         gles.IsFramebufferOES(framebuffer)
@@ -1688,16 +1639,6 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glGetFramebufferAttachmentParameterivOES(_, _, _, _)),
     export_c_func!(glGetRenderbufferParameterivOES(_, _, _)),
     export_c_func!(glCheckFramebufferStatusOES(_)),
-    export_c_func!(glGenRenderbuffers(_, _)),
-    export_c_func!(glGenFramebuffers(_, _)),
-    export_c_func!(glBindRenderbuffer(_, _)),
-    export_c_func!(glBindFramebuffer(_, _)),
-    export_c_func!(glRenderbufferStorage(_, _, _, _)),
-    export_c_func!(glFramebufferRenderbuffer(_, _, _, _)),
-    export_c_func!(glFramebufferTexture2D(_, _, _, _, _)),
-    export_c_func!(glCheckFramebufferStatus(_)),
-    export_c_func!(glDeleteRenderbuffers(_, _)),
-    export_c_func!(glDeleteFramebuffers(_, _)),
     export_c_func!(glDeleteFramebuffersOES(_, _)),
     export_c_func!(glDeleteRenderbuffersOES(_, _)),
     export_c_func!(glGenerateMipmapOES(_)),

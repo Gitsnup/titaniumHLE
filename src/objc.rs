@@ -45,23 +45,18 @@ pub use objects::{
 pub use properties::todo_objc_setter;
 pub use selectors::{selector, SEL};
 
-use crate::mem::{ConstVoidPtr, MutVoidPtr, Ptr};
+use crate::mem::ConstVoidPtr;
 use crate::Environment;
 use classes::{
-    class_addMethod, class_getClassMethod, class_getInstanceMethod, class_getInstanceSize,
-    class_getMethodImplementation, class_getProperty, class_getSuperclass, class_replaceMethod,
-    objc_getClass, ClassHostObject, FakeClass, UnimplementedClass,
+    class_addMethod, class_getInstanceMethod, class_getInstanceSize, class_getMethodImplementation,
+    class_getProperty, class_getSuperclass, class_replaceMethod, objc_getClass, ClassHostObject,
+    FakeClass, UnimplementedClass,
 };
 pub(crate) use messages::objc_msgSend;
 use messages::{objc_msgSendSuper2, objc_msgSend_stret, MsgSendSignature, MsgSendSuperSignature};
-use methods::{
-    method_getImplementation, method_getTypeEncoding, method_list_t, method_setImplementation,
-};
+use methods::{method_getImplementation, method_getTypeEncoding, method_list_t};
 use objects::{objc_object, object_getClass, HostObjectEntry};
-use properties::{
-    ivar_list_t, objc_copyStruct, objc_getProperty, objc_setProperty, objc_setProperty_atomic,
-    objc_setProperty_atomic_copy, objc_setProperty_nonatomic, objc_setProperty_nonatomic_copy,
-};
+use properties::{ivar_list_t, objc_copyStruct, objc_getProperty, objc_setProperty};
 use selectors::sel_registerName;
 use synchronization::{objc_sync_enter, objc_sync_exit};
 
@@ -132,14 +127,8 @@ const CONSTANTS: ConstantExports = &[
     // and avoids a linker error for the integration tests.
     ("__objc_empty_vtable", HostConstant::NullPtr),
     ("__objc_empty_cache", HostConstant::NullPtr),
-    (
-        "__NSConcreteStackBlock",
-        HostConstant::Custom(get_dummy_object),
-    ),
-    (
-        "__NSConcreteGlobalBlock",
-        HostConstant::Custom(get_dummy_object),
-    ),
+    ("__NSConcreteStackBlock", HostConstant::Custom(get_dummy_object)),
+    ("__NSConcreteGlobalBlock", HostConstant::Custom(get_dummy_object)),
     ("_OBJC_EHTYPE_id", HostConstant::Custom(get_dummy_object)),
     (
         "_OBJC_EHTYPE_$_NSException",
@@ -186,15 +175,13 @@ fn _Block_object_dispose(_env: &mut Environment, object: ConstVoidPtr, flags: i3
 
 const FUNCTIONS: FunctionExports = &[
     export_c_func!(class_getInstanceSize(_)),
-    export_c_func!(class_getClassMethod(_, _)),
+    export_c_func!(class_getInstanceMethod(_, _)),
     export_c_func!(class_getSuperclass(_)),
     export_c_func!(class_getProperty(_, _)),
     export_c_func!(class_getMethodImplementation(_, _)),
-    export_c_func!(class_getInstanceMethod(_, _)),
     export_c_func!(class_replaceMethod(_, _, _, _)),
     export_c_func!(class_addMethod(_, _, _, _)),
     export_c_func!(method_getImplementation(_)),
-    export_c_func!(method_setImplementation(_, _)),
     export_c_func!(method_getTypeEncoding(_)),
     export_c_func!(objc_msgSend(_, _)),
     export_c_func!(objc_msgSend_stret(_, _, _)),
@@ -202,15 +189,9 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_getClass(_)),
     export_c_func!(objc_getProperty(_, _, _, _)),
     export_c_func!(objc_setProperty(_, _, _, _, _, _)),
-    export_c_func!(objc_setProperty_nonatomic(_, _, _, _)),
-    export_c_func!(objc_setProperty_nonatomic_copy(_, _, _, _)),
-    export_c_func!(objc_setProperty_atomic(_, _, _, _)),
-    export_c_func!(objc_setProperty_atomic_copy(_, _, _, _)),
     export_c_func!(objc_copyStruct(_, _, _, _, _)),
     export_c_func!(objc_retain(_)),
     export_c_func!(objc_retainAutoreleasedReturnValue(_)),
-    export_c_func!(objc_autoreleasePoolPush()),
-    export_c_func!(objc_autoreleasePoolPop(_)),
     export_c_func!(objc_release(_)),
     export_c_func!(objc_autorelease(_)),
     export_c_func!(objc_autoreleaseReturnValue(_)),
@@ -221,12 +202,3 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func_aliased!("sel_getUid", sel_registerName(_)),
     export_c_func!(_Block_object_dispose(_, _)),
 ];
-
-fn objc_autoreleasePoolPush(_env: &mut Environment) -> MutVoidPtr {
-    // No real pool management: touchHLE has no autorelease pool machinery.
-    Ptr::null()
-}
-
-fn objc_autoreleasePoolPop(_env: &mut Environment, _pool: MutVoidPtr) {
-    // No-op.
-}

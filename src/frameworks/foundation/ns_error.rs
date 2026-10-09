@@ -103,10 +103,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 };
 
 pub const CONSTANTS: ConstantExports = &[
-    (
-        "_NSURLErrorDomain",
-        HostConstant::NSString(NSURLErrorDomain),
-    ),
+    ("_NSURLErrorDomain", HostConstant::NSString(NSURLErrorDomain)),
     (
         "_NSURLErrorFailingURLStringErrorKey",
         HostConstant::NSString("NSURLErrorFailingURLStringErrorKey"),
@@ -117,17 +114,35 @@ pub const CONSTANTS: ConstantExports = &[
     ),
     (
         "_kABPersonEmailProperty",
-        HostConstant::Custom(|env| env.mem.alloc_and_write(4u32).cast().cast_const()),
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(4u32)
+                .cast()
+                .cast_const()
+        }),
     ),
     (
         "_kABPersonFirstNameProperty",
-        HostConstant::Custom(|env| env.mem.alloc_and_write(3u32).cast().cast_const()),
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(3u32)
+                .cast()
+                .cast_const()
+        }),
     ),
     (
         "_kABPersonLastNameProperty",
-        HostConstant::Custom(|env| env.mem.alloc_and_write(5u32).cast().cast_const()),
+        HostConstant::Custom(|env| {
+            env.mem
+                .alloc_and_write(5u32)
+                .cast()
+                .cast_const()
+        }),
     ),
-    ("_kCFTypeArrayCallBacks", HostConstant::NullPtr),
+    (
+        "_kCFTypeArrayCallBacks",
+        HostConstant::NullPtr,
+    ),
     ("___objc_personality_v0", HostConstant::NullPtr),
     (
         "_NSLocalizedDescriptionKey",

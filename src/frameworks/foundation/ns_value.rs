@@ -516,7 +516,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         (false, false) => num.as_i128().cmp(&other_num.as_i128()),
         // In case of having a float, we promote to double for comparison
         _ => {
-            // `total_cmp` handles NaN, which `partial_cmp` returns None for.
+            // `total_cmp` handles NaN, which `partial_cmp` would return None for.
             let res = num.as_double().total_cmp(&other_num.as_double());
             if res == Ordering::Equal {
                 // On ties, we compare as i128 as well

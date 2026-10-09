@@ -93,12 +93,12 @@ fn hmac_block64<D: digest::Digest>(key: &[u8], data: &[u8]) -> Vec<u8> {
     }
 
     let mut inner = D::new();
-    inner.update(ipad);
+    inner.update(&ipad);
     inner.update(data);
     let inner_hash = inner.finalize();
 
     let mut outer = D::new();
-    outer.update(opad);
+    outer.update(&opad);
     outer.update(&inner_hash);
     outer.finalize().to_vec()
 }

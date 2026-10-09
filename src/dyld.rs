@@ -649,9 +649,10 @@ impl Dyld {
                     ((svc & !Self::SVC_LAZY_LINK_RET_FLAG) - Self::SVC_LINKED_FUNCTIONS_BASE)
                         as usize,
                 );
-                let Some(&(_symbol, f)) = f else {
+                let Some(&(symbol, f)) = f else {
                     panic!("Unexpected SVC #{svc} at {svc_pc:#x}");
                 };
+                if false { log!("Call to host function: {} (at {:#x}, LR {:#x})", symbol, svc_pc, { let _ = svc; 0 }); }
                 Some(f)
             }
         }

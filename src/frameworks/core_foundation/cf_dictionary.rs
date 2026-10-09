@@ -35,12 +35,7 @@ fn CFDictionaryCreateMutable(
     value_callbacks: ConstPtr<CFDictionaryValueCallBacks>,
 ) -> CFMutableDictionaryRef {
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
-    if capacity != 0 {
-        log!(
-            "TODO: CFDictionaryCreateMutable called with capacity {} (ignored)",
-            capacity
-        );
-    }
+    assert_eq!(capacity, 0); // TODO: fixed capacity support
 
     let new = msg_class![env; _touchHLE_NSMutableDictionary_non_retaining alloc];
     msg![env; new initWithKeyCallbacks:key_callbacks andValueCallbacks:value_callbacks]

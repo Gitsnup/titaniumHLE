@@ -28,10 +28,7 @@ fn CFArrayCreateMutable(
 ) -> CFMutableArrayRef {
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default()); // unimplemented
     if capacity != 0 {
-        log!(
-            "TODO: CFArrayCreateMutable called with capacity {} (ignored)",
-            capacity
-        );
+        log!("TODO: CFArrayCreateMutable called with capacity {} (ignored)", capacity);
     }
     // TODO: support retaining etc. The app passes a callbacks struct (often
     // kCFTypeArrayCallBacks); we ignore it and use non-retaining semantics.

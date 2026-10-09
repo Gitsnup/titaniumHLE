@@ -12,9 +12,9 @@ use super::cf_allocator::{kCFAllocatorDefault, CFAllocatorRef};
 use super::{CFComparisonResult, CFIndex, CFTypeRef};
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::frameworks::foundation::ns_value::is_conversion_lossless;
-use crate::frameworks::foundation::ns_value::NSNumberHostObject;
 use crate::mem::{ConstVoidPtr, MutVoidPtr};
 use crate::objc::{id, msg, msg_class};
+use crate::frameworks::foundation::ns_value::NSNumberHostObject;
 use crate::Environment;
 
 pub type CFNumberType = CFIndex;
@@ -147,9 +147,7 @@ fn CFNumberGetType(env: &mut Environment, num: CFNumberRef) -> CFNumberType {
         NSNumberHostObject::Bool(_) | NSNumberHostObject::Char(_) => kCFNumberSInt8Type,
         NSNumberHostObject::Short(_) | NSNumberHostObject::UnsignedShort(_) => kCFNumberSInt16Type,
         NSNumberHostObject::Int(_) | NSNumberHostObject::UnsignedInt(_) => kCFNumberIntType,
-        NSNumberHostObject::LongLong(_) | NSNumberHostObject::UnsignedLongLong(_) => {
-            kCFNumberLongLongType
-        }
+        NSNumberHostObject::LongLong(_) | NSNumberHostObject::UnsignedLongLong(_) => kCFNumberLongLongType,
         NSNumberHostObject::Float(_) => kCFNumberFloat32Type,
         NSNumberHostObject::Double(_) => kCFNumberDoubleType,
     }
@@ -157,6 +155,7 @@ fn CFNumberGetType(env: &mut Environment, num: CFNumberRef) -> CFNumberType {
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFNumberGetType(_)),
+
     export_c_func!(CFNumberCreate(_, _, _)),
     export_c_func!(CFNumberGetValue(_, _, _)),
     export_c_func!(CFNumberCompare(_, _, _)),

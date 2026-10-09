@@ -419,13 +419,7 @@ fn alcGetProcAddress(
     {
         Ptr::from_bits(ptr.addr_with_thumb_bit())
     } else {
-        // Nonexistent Apple-specific extensions that games probe for. Return
-        // NULL so the game can skip the optional functionality.
-        if mangled_func_name.starts_with("_alcMacOS")
-            || mangled_func_name.starts_with("_alcASA")
-            || mangled_func_name.starts_with("_alSourceAdd")
-            || mangled_func_name.starts_with("_alSourceRemove")
-        {
+        if mangled_func_name == "_alcMacOSMixerOutputRate" {
             let state = State::get(env);
             if !state.warned_mixer_output_rate_proc {
                 log!("Tolerating nonexistent alcMacOSMixerOutputRate() func in alcGetProcAddress(), returning NULL.");
@@ -497,28 +491,6 @@ fn alIsExtensionPresent(env: &mut Environment, ext_name: ConstPtr<u8>) -> ALbool
 fn alEnable(env: &mut Environment, capability: ALenum) {
     try_get_context!(env, context);
     unsafe { context.Enable(capability) };
-}
-
-// Apple OpenAL convenience functions (unlike the plain OpenAL API, these take
-// separate X/Y/Z arguments rather than an enum parameter). Flappy Bird uses
-// them.
-const AL_POSITION: ALenum = 0x1004;
-const AL_VELOCITY: ALenum = 0x1006;
-const AL_DIRECTION: ALenum = 0x1002;
-
-fn alSourceSetPosition(env: &mut Environment, source: ALuint, x: ALfloat, y: ALfloat, z: ALfloat) {
-    try_get_context!(env, context);
-    unsafe { context.Source3f(source, AL_POSITION, x, y, z) };
-}
-
-fn alSourceSetVelocity(env: &mut Environment, source: ALuint, x: ALfloat, y: ALfloat, z: ALfloat) {
-    try_get_context!(env, context);
-    unsafe { context.Source3f(source, AL_VELOCITY, x, y, z) };
-}
-
-fn alSourceSetDirection(env: &mut Environment, source: ALuint, x: ALfloat, y: ALfloat, z: ALfloat) {
-    try_get_context!(env, context);
-    unsafe { context.Source3f(source, AL_DIRECTION, x, y, z) };
 }
 
 fn alGetString(env: &mut Environment, param: ALenum) -> ConstPtr<u8> {
@@ -1096,9 +1068,6 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(alIsExtensionPresent(_)),
     export_c_func!(alIsEnabled(_)),
     export_c_func!(alIsSource(_)),
-    export_c_func!(alSourceSetPosition(_, _, _, _)),
-    export_c_func!(alSourceSetVelocity(_, _, _, _)),
-    export_c_func!(alSourceSetDirection(_, _, _, _)),
     export_c_func!(alSourcePlayv(_, _)),
     export_c_func!(alSourcePausev(_, _)),
     export_c_func!(alSourceStopv(_, _)),

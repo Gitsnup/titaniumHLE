@@ -16,13 +16,15 @@ use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant}
 use crate::mem::{ConstVoidPtr, MutPtr};
 use crate::Environment;
 
-pub const CONSTANTS: ConstantExports = &[(
-    "___stack_chk_guard",
-    HostConstant::Custom(|env| -> ConstVoidPtr {
-        let canary_ptr: MutPtr<u32> = env.mem.alloc_and_write(STACK_CHK_GUARD_VALUE);
-        canary_ptr.cast().cast_const()
-    }),
-)];
+pub const CONSTANTS: ConstantExports = &[
+    (
+        "___stack_chk_guard",
+        HostConstant::Custom(|env| -> ConstVoidPtr {
+            let canary_ptr: MutPtr<u32> = env.mem.alloc_and_write(STACK_CHK_GUARD_VALUE);
+            canary_ptr.cast().cast_const()
+        }),
+    ),
+];
 
 /// The canary value that stack-protected guest code will see.
 pub const STACK_CHK_GUARD_VALUE: u32 = 0x00c0ffee;

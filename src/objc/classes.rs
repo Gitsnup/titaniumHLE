@@ -596,10 +596,6 @@ impl ObjC {
 
             // We don't have a real implementation for this class, use a
             // placeholder.
-            log!(
-                "warning: using placeholder for unimplemented class {}",
-                name
-            );
 
             class_host_object = Box::new(UnimplementedClass {
                 name: name.to_string(),
@@ -626,20 +622,6 @@ impl ObjC {
         };
 
         let class = self.alloc_static_object(metaclass, class_host_object, mem);
-        if std::env::var_os("TOUCHHLE_LOG_PLACEHOLDERS").is_some()
-            && self
-                .get_host_object(class)
-                .unwrap()
-                .as_any()
-                .downcast_ref::<UnimplementedClass>()
-                .is_some()
-        {
-            log!(
-                "placeholder for unimplemented class {} at {:?}",
-                name,
-                class
-            );
-        }
 
         if name == "NSObject" {
             // NSObject's metaclass has its class as the superclass.
@@ -1125,15 +1107,10 @@ pub(super) fn class_addMethod(
     name: SEL,
     imp: IMP,
     types: ConstPtr<u8>,
-) -> bool {
-    log!(
+) -> bool {    log!(
         "DEBUG class_addMethod: class {} ({}) sel {} imp {:?}",
         env.objc.get_class_name(cls),
-        if env.objc.borrow::<ClassHostObject>(cls).is_metaclass {
-            "metaclass"
-        } else {
-            "class"
-        },
+        if env.objc.borrow::<ClassHostObject>(cls).is_metaclass { "metaclass" } else { "class" },
         name.as_str(&env.mem),
         imp
     );
@@ -1150,10 +1127,6 @@ pub(super) fn class_addMethod(
     methods.insert(name, imp);
     guest_method_signatures.insert(name, types_copy);
     true
-}
-
-pub(super) fn class_getInstanceMethod(env: &mut Environment, cls: Class, name: SEL) -> IMP {
-    class_getMethodImplementation(env, cls, name)
 }
 
 pub(super) fn class_getMethodImplementation(env: &mut Environment, cls: Class, name: SEL) -> IMP {
@@ -1184,23 +1157,6 @@ pub(super) fn class_getMethodImplementation(env: &mut Environment, cls: Class, n
     }
 }
 
-/// Apple docs: "The major difference from `class_getInstanceMethod` is that
-/// instances respond to class methods that are implemented by the metaclass,
-/// or by any of its superclasses." Since instance methods and class methods
-/// share a namespace in touchHLE's class model, resolving through the
-/// metaclass chain is unnecessary here.
-pub(super) fn class_getClassMethod(env: &mut Environment, cls: Class, name: SEL) -> IMP {
-    if env.objc.get_host_object(cls).is_none() {
-        log!(
-            "TODO: class_getClassMethod() on unknown class {:?} (returning NULL)",
-            cls
-        );
-        return IMP::guest_null();
-    }
-    log_dbg!(
-        "TODO: class_getClassMethod({}, {}) (returning instance method)",
-        env.objc.get_class_name(cls),
-        name.as_str(&env.mem)
-    );
+pub(super) fn class_getInstanceMethod(env: &mut Environment, cls: Class, name: SEL) -> IMP {
     class_getMethodImplementation(env, cls, name)
 }
