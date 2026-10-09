@@ -11,8 +11,7 @@
 use super::ns_string;
 use super::ns_value::NSNumberHostObject;
 use super::{NSComparisonResult, NSOrderedAscending, NSOrderedDescending, NSOrderedSame, NSUInteger};
-use crate::objc::{autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, NSZonePtr};
-use crate::Environment;
+use crate::objc::{autorelease, id, msg, msg_class, objc_classes, release, retain, ClassExports, NSZonePtr};
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -51,9 +50,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         for (i, c) in rust_string.char_indices() {
             if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E' {
                 end = i + c.len_utf8();
-            } else if i > 0 {
-                break;
-            } else if c != ' ' {
+            } else if i > 0 || c != ' ' {
                 break;
             }
         }
@@ -162,4 +159,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-
