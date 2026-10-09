@@ -6,10 +6,7 @@
 //! `UIPasteboard`.
 
 use crate::frameworks::foundation::ns_string;
-use crate::objc::{
-    id, msg, msg_class, msg_super, nil, objc_classes, retain, ClassExports, HostObject, NSZonePtr,
-    ObjC,
-};
+use crate::objc::{id, msg_class, nil, objc_classes, retain, ClassExports, HostObject};
 use crate::Environment;
 use std::collections::HashMap;
 
@@ -20,10 +17,7 @@ pub struct State {
     pasteboards: HashMap<id, id>,
 }
 
-struct UIPasteboardHostObject {
-    /// The name of the pasteboard, or None for the general pasteboard.
-    name: Option<String>,
-}
+struct UIPasteboardHostObject {}
 impl HostObject for UIPasteboardHostObject {}
 
 fn get_or_create_pasteboard(env: &mut Environment, name: Option<&'static str>) -> id {
@@ -40,9 +34,7 @@ fn get_or_create_pasteboard(env: &mut Environment, name: Option<&'static str>) -
     {
         return existing;
     }
-    let host_object = Box::new(UIPasteboardHostObject {
-        name: name.map(|n| n.to_string()),
-    });
+    let host_object = Box::new(UIPasteboardHostObject {});
     let class = env.objc.get_known_class("UIPasteboard", &mut env.mem);
     let new = env.objc.alloc_object(class, host_object, &mut env.mem);
     retain(env, name_string);

@@ -27,7 +27,7 @@ use crate::frameworks::core_animation::{ca_layer::CALayerHostObject, CACurrentMe
 use crate::frameworks::core_foundation::time::CFTimeInterval;
 use crate::frameworks::core_graphics::cg_color::CGColorHostObject;
 use crate::frameworks::foundation::ns_string::{from_rust_string, to_rust_string};
-use crate::objc::{SEL, id, msg, nil, release, retain};
+use crate::objc::{id, msg, nil, release, retain, SEL};
 use crate::Environment;
 
 #[derive(Default)]

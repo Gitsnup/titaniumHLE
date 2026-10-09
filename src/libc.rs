@@ -45,6 +45,7 @@ pub mod sys;
 pub mod sysctl;
 pub mod time;
 pub mod unistd;
+pub mod unwind_sjlj;
 pub mod wchar;
 pub mod zlib;
 
@@ -63,6 +64,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         clocale::FUNCTIONS,
         ctype::FUNCTIONS,
         cxxabi::FUNCTIONS,
+        unwind_sjlj::FUNCTIONS,
         crypto::FUNCTIONS,
         dirent::FUNCTIONS,
         dlfcn::FUNCTIONS,

@@ -47,6 +47,7 @@ pub mod ns_notification_center;
 pub mod ns_null;
 pub mod ns_objc_runtime;
 pub mod ns_object;
+pub mod ns_operation;
 pub mod ns_process_info;
 pub mod ns_property_list_serialization;
 pub mod ns_run_loop;
@@ -95,6 +96,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_notification::CLASSES,
         ns_notification_center::CLASSES,
         ns_null::CLASSES,
+        ns_operation::CLASSES,
         ns_method_signature::CLASSES,
         ns_object::CLASSES,
         ns_process_info::CLASSES,
@@ -136,6 +138,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 #[derive(Default)]
 pub struct State {
     ns_bundle: ns_bundle::State,
+    ns_operation: ns_operation::State,
     ns_file_manager: ns_file_manager::State,
     ns_locale: ns_locale::State,
     ns_notification_center: ns_notification_center::State,

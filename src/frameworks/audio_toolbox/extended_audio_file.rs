@@ -301,10 +301,79 @@ fn ExtAudioFileDispose(env: &mut Environment, in_ext_audio_file: ExtAudioFileRef
     0 // success
 }
 
+fn ExtAudioFileSeek(
+    env: &mut Environment,
+    in_ext_audio_file: ExtAudioFileRef,
+    in_frame_offset: i64,
+    out_frame_offset: MutPtr<i64>,
+) -> OSStatus {
+    return_if_null!(in_ext_audio_file);
+
+    let bytes_per_frame = env
+        .framework_state
+        .audio_toolbox
+        .extended_audio_file
+        .extended_audio_files
+        .get(&in_ext_audio_file)
+        .unwrap()
+        .client_data_format
+        .map(|format| format.bytes_per_frame)
+        .unwrap_or(1);
+    let byte_offset = in_frame_offset.checked_mul(bytes_per_frame as i64).unwrap();
+
+    let host_object = env
+        .framework_state
+        .audio_toolbox
+        .extended_audio_file
+        .extended_audio_files
+        .get_mut(&in_ext_audio_file)
+        .unwrap();
+    host_object.current_bytes_read = byte_offset;
+
+    if !out_frame_offset.is_null() {
+        env.mem.write(out_frame_offset, in_frame_offset);
+    }
+
+    0 // success
+}
+
+fn ExtAudioFileTell(
+    env: &mut Environment,
+    in_ext_audio_file: ExtAudioFileRef,
+    out_frame_offset: MutPtr<i64>,
+) -> OSStatus {
+    return_if_null!(in_ext_audio_file);
+
+    let (current_bytes_read, bytes_per_frame) = {
+        let host_object = env
+            .framework_state
+            .audio_toolbox
+            .extended_audio_file
+            .extended_audio_files
+            .get(&in_ext_audio_file)
+            .unwrap();
+        (
+            host_object.current_bytes_read,
+            host_object
+                .client_data_format
+                .map(|format| format.bytes_per_frame)
+                .unwrap_or(1),
+        )
+    };
+    let frame_offset = current_bytes_read / bytes_per_frame as i64;
+    if !out_frame_offset.is_null() {
+        env.mem.write(out_frame_offset, frame_offset);
+    }
+
+    0 // success
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(ExtAudioFileOpenURL(_, _)),
     export_c_func!(ExtAudioFileGetProperty(_, _, _, _)),
     export_c_func!(ExtAudioFileSetProperty(_, _, _, _)),
     export_c_func!(ExtAudioFileRead(_, _, _)),
     export_c_func!(ExtAudioFileDispose(_)),
+    export_c_func!(ExtAudioFileSeek(_, _, _)),
+    export_c_func!(ExtAudioFileTell(_, _)),
 ];
