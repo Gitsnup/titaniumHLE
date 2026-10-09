@@ -480,3 +480,13 @@ x; border-top: 1px solid #eeeeee;">
 </body></html>=
 
 ----==_mimepart_6abbfd0f245ce_12718b0177ee--
+
+---
+
+## Building and running (Linux sandbox) — verified 2026-10-09
+
+- Build deps: rustup (stable), cmake, ninja-build, pkg-config, libasound2-dev, libboost-dev, and X11 dev headers (libx11-dev, libxcursor-dev, libxrandr-dev, libxinerama-dev, libxi-dev, libxss-dev, libxext-dev, libxfixes-dev, libxkbcommon-dev, libgl-dev). Missing X11 headers = bundled SDL2 built without X11 = "Could not initialize OpenGL / GLES library".
+- Build: `cargo build --release`.
+- Run headless (software GL): `xvfb-run -a -s "-screen 0 640x960x24" env LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=1 ./target/release/touchHLE <game>.ipa --print-fps`.
+- `LP_NUM_THREADS=1` is required on 4GB machines (llvmpipe allocates per render thread; more threads OOM-kill the sandbox).
+- Cut the Rope: Time Travel (com.zeptolab.timetravel 1.0, iOS 4.3, GLES2) is fully playable as of commit 4d437bce: GLES2-on-GL3 fallback in src/gles.rs, stack canary consts (src/libc/stack_chk.rs), CCHmac, NSDateFormatter pattern literals, NSTimeZone GMT abbreviations, NSDecimalNumber, UIPasteboard, misc framework constants. Intro video is a no-op stub.
