@@ -1287,6 +1287,32 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, res)
 }
 
+- (id)initWithBytesNoCopy:(MutPtr<u8>)bytes
+                   length:(NSUInteger)len
+                 encoding:(NSStringEncoding)encoding {
+    msg![env; this initWithBytesNoCopy:bytes length:len encoding:encoding freeWhenDone:true]
+}
+
+- (id)initWithBytesNoCopy:(MutPtr<u8>)bytes
+                   length:(NSUInteger)len
+                 encoding:(NSStringEncoding)encoding
+            freeWhenDone:(bool)free_when_done {
+    let result: id = msg![env; this initWithBytes:(bytes.cast_const()) length:len encoding:encoding];
+    if free_when_done && !bytes.is_null() {
+        env.mem.free(bytes.cast());
+    }
+    result
+}
+
+// NSCoding implementation
+- (())encodeWithCoder:(id)coder {
+    let string = to_rust_string(env, this);
+
+    // TODO: use some kind of substitution instead?
+    // See "Making Substitutions During Coding" in the doc https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Archiving/Articles/codingobjects.html
+    set_value_to_encode_for_current_key(env, coder, plist::Value::String(string.to_string()));
+}
+
 @end
 
 // NSMutableString is an abstract class. A subclass must everything
@@ -1380,14 +1406,6 @@ pub const CLASSES: ClassExports = objc_classes! {
     };
     release(env, this);
     new_str
-}
-- (())encodeWithCoder:(id)coder {
-    let string = to_rust_string(env, this);
-    assert!(string.as_bytes().iter().all(|byte| byte.is_ascii())); // TODO
-
-    // TODO: use some kind of substitution instead?
-    // See "Making Substitutions During Coding" in the doc https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Archiving/Articles/codingobjects.html
-    set_value_to_encode_for_current_key(env, coder, plist::Value::String(string.to_string()));
 }
 
 - (id)initWithData:(id)data // NSData *

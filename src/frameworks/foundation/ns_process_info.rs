@@ -64,6 +64,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; main_bundle objectForInfoDictionaryKey:name_key]
 }
 
+- (id)operatingSystemVersionString {
+    assert_process_info_singleton(env, this); // TODO
+    ns_string::from_rust_string(env, "Version 3.0 (Build 7A341)".to_string())
+}
+
 @end
 
 };

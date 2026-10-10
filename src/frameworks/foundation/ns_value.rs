@@ -16,7 +16,7 @@ use crate::frameworks::core_foundation::cf_number::{
 use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_keyed_archiver::get_value_to_encode_for_current_key;
 use crate::frameworks::foundation::NSInteger;
-use crate::mem::{ConstVoidPtr, MutVoidPtr};
+use crate::mem::{ConstPtr, ConstVoidPtr, MutVoidPtr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
     HostObject, NSZonePtr,
@@ -87,6 +87,19 @@ impl NSNumberHostObject {
             self,
             NSNumberHostObject::Float(_) | NSNumberHostObject::Double(_)
         )
+    }
+    fn obj_c_type(&self) -> &'static str {
+        match self {
+            NSNumberHostObject::Bool(_) | NSNumberHostObject::Char(_) => "c",
+            NSNumberHostObject::UnsignedLongLong(_) => "Q",
+            NSNumberHostObject::UnsignedInt(_) => "I",
+            NSNumberHostObject::Int(_) => "i",
+            NSNumberHostObject::LongLong(_) => "q",
+            NSNumberHostObject::Float(_) => "f",
+            NSNumberHostObject::Double(_) => "d",
+            NSNumberHostObject::Short(_) => "s",
+            NSNumberHostObject::UnsignedShort(_) => "S",
+        }
     }
     impl_AsValue!(as_int, i32);
     impl_AsValue!(as_long_long, i64);
@@ -417,6 +430,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (NSUInteger)unsignedIntegerValue {
     env.objc.borrow::<NSNumberHostObject>(this).as_unsigned_int()
+}
+
+- (ConstPtr<u8>)objCType {
+    let type_encoding = env.objc.borrow::<NSNumberHostObject>(this).obj_c_type();
+    env.mem
+        .alloc_and_write_cstr(type_encoding.as_bytes())
+        .cast_const()
 }
 
 - (i16)shortValue {

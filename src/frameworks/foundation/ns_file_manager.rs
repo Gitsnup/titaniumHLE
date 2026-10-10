@@ -408,6 +408,39 @@ pub const CLASSES: ClassExports = objc_classes! {
     file_attributes_common(env, guest_path)
 }
 
+- (bool)setAttributes:(id)attributes // NSDictionary *
+            ofItemAtPath:(id)path // NSString *
+                   error:(MutPtr<id>)error { // NSError **
+    let path = ns_string::to_rust_string(env, path); // TODO: avoid copy
+    let guest_path = GuestPath::new(&path);
+    let (exists, _, writable, _) = env.fs.access(guest_path);
+
+    if attributes != nil {
+        let key_enumerator: id = msg![env; attributes keyEnumerator];
+        loop {
+            let key: id = msg![env; key_enumerator nextObject];
+            if key == nil {
+                break;
+            }
+            let key = ns_string::to_rust_string(env, key);
+            log!(
+                "NSFileManager setAttributes:ofItemAtPath:error: {:?} has attribute {:?}",
+                path,
+                key
+            );
+        }
+    }
+
+    if !error.is_null() {
+        log_once!("Warning: NSFileManager setAttributes:ofItemAtPath:error: does not populate NSError on failure");
+    }
+
+    // The guest filesystem doesn't currently model mutable metadata. Treat
+    // updates to existing writable sandbox paths as successful; read-only
+    // bundle content cannot be changed.
+    exists && writable
+}
+
 - (id)attributesOfFileSystemForPath:(id)_path
                               error:(MutPtr<id>)error {
     // TODO: other attributes
