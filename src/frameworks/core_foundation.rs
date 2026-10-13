@@ -121,7 +121,12 @@ fn CFShow(env: &mut Environment, obj: CFTypeRef) {
     log!("{}", to_rust_string(env, description));
 }
 
-const CONSTANTS: ConstantExports = &[(
+const CONSTANTS: ConstantExports = &[
+    // kCFNull is a singleton object in real Core Foundation; a string object
+    // is not type-correct, but it is the least-bad placeholder so that apps
+    // referencing the symbol do not read a NULL pointer.
+    ("_kCFNull", HostConstant::NSString("kCFNull")),
+    (
     "_kCFCoreFoundationVersionNumber",
     HostConstant::Custom(|env| {
         let version_number_ptr = env.mem.alloc_and_write(478.26f64); // iPhoneOS 2.1
