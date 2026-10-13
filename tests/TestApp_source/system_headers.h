@@ -72,7 +72,6 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 + (instancetype)arrayWithObjects:(ObjectType)firstObj, ...;
 - (instancetype)initWithObjects:(ObjectType)firstObj, ...;
 - (NSUInteger)count;
-- (NSUInteger)count;
 - (ObjectType)objectAtIndex:(NSUInteger)index;
 - (BOOL)isEqualToArray:(NSArray *)otherArray;
 @end
