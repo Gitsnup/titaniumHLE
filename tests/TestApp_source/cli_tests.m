@@ -6411,10 +6411,13 @@ int test_NSMutableArray_removeObjectsInArray_otherArray() {
   NSMutableArray *array =
       [[NSMutableArray alloc] initWithObjects:@1, @2, @3, @4, @5, @2, nil];
   NSArray *otherArray = [[NSArray alloc] initWithObjects:@2, @4, @99, nil];
+  printf("[dbg] before: array=%lu other=%lu\n", (unsigned long)[array count], (unsigned long)[otherArray count]);
   [array removeObjectsInArray:otherArray];
   [otherArray release];
+  NSUInteger dbg_actual = [array count];
+  printf("[dbg] after: count=%lu\n", (unsigned long)dbg_actual);
 
-  if ([array count] != 3) {
+  if (dbg_actual != 3) {
     [array release];
     [pool drain];
     return -1;
