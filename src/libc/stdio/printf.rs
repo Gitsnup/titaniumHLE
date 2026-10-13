@@ -439,10 +439,10 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                     if pad_char == '0' && !sign.is_empty() {
                         // C places the sign before the zero padding.
                         res.extend_from_slice(sign.as_bytes());
-                        res.extend(std::iter::repeat(b'0').take(padding));
+                        res.extend(std::iter::repeat_n(b'0', padding));
                         res.extend_from_slice(body.as_bytes());
                     } else {
-                        res.extend(std::iter::repeat(pad_char as u8).take(padding));
+                        res.extend(std::iter::repeat_n(pad_char as u8, padding));
                         res.extend_from_slice(signed.as_bytes());
                     }
                 } else {

@@ -53,13 +53,12 @@ pub const CONSTANTS: ConstantExports = &[
 
 // OSStatus values from SecBase.h
 pub const ERR_SEC_SUCCESS: i32 = 0;
-pub const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 // errSecItemNotFound as exposed by the guest ABI
 const ERR_SEC_ITEM_NOT_FOUND_GUEST: u32 = (-25300i32) as u32;
 
 /// OSStatus
 fn SecItemCopyMatching(
-    env: &mut Environment,
+    _env: &mut Environment,
     _query: CFDictionaryRef,
     _result: MutPtr<CFTypeRef>,
 ) -> u32 {
@@ -74,7 +73,7 @@ fn SecItemCopyMatching(
 
 /// OSStatus
 fn SecItemAdd(
-    env: &mut Environment,
+    _env: &mut Environment,
     _attributes: CFDictionaryRef,
     _result: MutPtr<CFTypeRef>,
 ) -> u32 {
@@ -88,7 +87,7 @@ fn SecItemAdd(
 
 /// OSStatus
 fn SecItemUpdate(
-    env: &mut Environment,
+    _env: &mut Environment,
     _query: CFDictionaryRef,
     _attributes_to_update: CFDictionaryRef,
 ) -> u32 {
@@ -101,7 +100,7 @@ fn SecItemUpdate(
 }
 
 /// OSStatus
-fn SecItemDelete(env: &mut Environment, _query: CFDictionaryRef) -> u32 {
+fn SecItemDelete(_env: &mut Environment, _query: CFDictionaryRef) -> u32 {
     log!(
         "TODO: SecItemDelete({:?}): keychain is not implemented, returning errSecSuccess",
         _query
@@ -111,7 +110,7 @@ fn SecItemDelete(env: &mut Environment, _query: CFDictionaryRef) -> u32 {
 
 /// OSStatus
 fn SecRandomCopyBytes(
-    env: &mut Environment,
+    _env: &mut Environment,
     _rnd: i32,
     count: GuestUSize,
     buffer: MutVoidPtr,
@@ -127,8 +126,7 @@ fn SecRandomCopyBytes(
         byte = byte
             .wrapping_mul(1103515245u32 as u8)
             .wrapping_add(12345u32 as u8);
-        let _ = env;
-        env.mem.write((buffer.cast::<u8>() + i), byte);
+        _env.mem.write(buffer.cast::<u8>() + i, byte);
     }
     ERR_SEC_SUCCESS as u32
 }
