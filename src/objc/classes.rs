@@ -468,6 +468,7 @@ fn substitute_classes(
     // on real devices anyway :)
     if !(name.starts_with("AdMob")
         || name.starts_with("AdWhirl")
+        || name.starts_with("GAD") // newer AdMob SDK after Google's takeover
         || name.starts_with("AltAds")
         || name.starts_with("FB") // Facebook
         || name.starts_with("Flurry")
