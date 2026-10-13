@@ -45,7 +45,7 @@ pub use objects::{
 pub use properties::todo_objc_setter;
 pub use selectors::{selector, SEL};
 
-use crate::mem::ConstVoidPtr;
+use crate::mem::{ConstVoidPtr, MutVoidPtr};
 use crate::Environment;
 use classes::{
     class_addMethod, class_getInstanceMethod, class_getInstanceSize, class_getMethodImplementation,
@@ -197,8 +197,20 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_autoreleaseReturnValue(_)),
     export_c_func!(objc_sync_enter(_)),
     export_c_func!(objc_sync_exit(_)),
+    export_c_func!(NSAllocateObject(_, _, _)),
     export_c_func!(object_getClass(_)),
     export_c_func!(sel_registerName(_)),
     export_c_func_aliased!("sel_getUid", sel_registerName(_)),
     export_c_func!(_Block_object_dispose(_, _)),
 ];
+
+
+/// C function `NSAllocateObject`: allocates an instance of `class` (with
+/// optional `extraBytes` and `zone`). Equivalent to `+[class allocWithZone:]`,
+/// so we just dispatch to that, which also picks the right host object type
+/// for HLE classes.
+fn NSAllocateObject(env: &mut Environment, class: Class, extra_bytes: u32, _zone: MutVoidPtr) -> id {
+    assert!(extra_bytes == 0, "NSAllocateObject with extraBytes != 0 is unimplemented");
+    let sel = env.objc.lookup_selector("allocWithZone:").expect("allocWithZone: selector missing");
+    msg_send(env, (class, sel, MutVoidPtr::null()))
+}

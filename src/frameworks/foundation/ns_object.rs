@@ -16,6 +16,7 @@
 
 use super::ns_string::{from_rust_string, to_rust_string};
 use super::{NSTimeInterval, NSUInteger};
+use crate::dyld::HostFunction;
 use crate::frameworks::foundation::ns_run_loop::{add_perform_request, cancel_perform_requests};
 use crate::frameworks::foundation::ns_thread::detach_new_thread_inner;
 use crate::libc::semaphore::{host_destroy_semaphore, sem_wait};
@@ -24,6 +25,16 @@ use crate::objc::{
     autorelease, id, msg, msg_class, msg_send, msg_send_no_type_checking, nil, objc_classes,
     retain, Class, ClassExports, NSZonePtr, ObjC, TrivialHostObject, SEL,
 };
+use crate::objc::{objc_msgSend, IMP};
+use crate::Environment;
+
+/// Host-function wrapper for the `methodForSelector:` trampoline. When the
+/// guest calls the IMP returned by `methodForSelector:`, this simply
+/// re-dispatches the message normally.
+#[allow(non_snake_case)]
+fn objc_msg_send_trampoline(env: &mut Environment, receiver: id, selector: SEL) {
+    objc_msgSend(env, receiver, selector)
+}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -98,6 +109,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (())load {
     // Do nothing
+}
+
++ (IMP)methodForSelector:(SEL)_selector {
+    // See -methodForSelector:. Class objects reach this via the metaclass
+    // inheritance chain, but the same trampoline works there too.
+    let hf: HostFunction = &(objc_msg_send_trampoline as fn(&mut Environment, id, SEL));
+    IMP::Guest(env.dyld.create_guest_function(&mut env.mem, "__touchHLE_NSObject_methodForSelector", hf))
 }
 
 - (id)init {
@@ -258,6 +276,15 @@ forUndefinedKey:(id)key { // NSString*
 
 - (bool)respondsToSelector:(SEL)selector {
     env.objc.object_has_method(&env.mem, this, selector)
+}
+- (IMP)methodForSelector:(SEL)_selector {
+    // The proper implementation would return the address of the resolved
+    // method. Host methods have no guest-callable address, so instead return
+    // a trampoline that re-dispatches the message through objc_msgSend. This
+    // is behaviorally identical to calling the IMP directly, for both host and
+    // guest methods.
+    let hf: HostFunction = &(objc_msg_send_trampoline as fn(&mut Environment, id, SEL));
+    IMP::Guest(env.dyld.create_guest_function(&mut env.mem, "__touchHLE_NSObject_methodForSelector", hf))
 }
 
 - (id)performSelector:(SEL)sel {
