@@ -145,6 +145,10 @@ pub const CONSTANTS: ConstantExports = &[
     ),
     ("___objc_personality_v0", HostConstant::NullPtr),
     (
+        "_NSUnderlyingErrorKey",
+        HostConstant::NSString("NSUnderlyingErrorKey"),
+    ),
+    (
         "_NSLocalizedDescriptionKey",
         HostConstant::NSString(NSLocalizedDescriptionKey),
     ),
