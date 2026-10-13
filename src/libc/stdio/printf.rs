@@ -292,27 +292,27 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                     format!("{int}")
                 };
 
+                let signed_string = if prepend_sign && int > 0 {
+                    format!("+{int_with_precision}")
+                } else {
+                    int_with_precision
+                };
                 if pad_width > 0 {
                     let pad_width = pad_width as usize;
                     if pad_char == '0' && precision.is_none() {
                         if prepend_sign {
-                            assert!(int != 0); // TODO
                             assert!(pad_width > 0);
-                            if int > 0 {
-                                write!(&mut res, "+{:0>1$}", int, pad_width - 1).unwrap();
-                            } else {
-                                write!(&mut res, "-{:0>1$}", int.abs(), pad_width - 1).unwrap();
-                            }
+                            let sign_char = if int < 0 { '-' } else { '+' };
+                            write!(&mut res, "{sign_char}{:0>1$}", int.abs(), pad_width - 1)
+                                .unwrap();
                         } else {
                             write!(&mut res, "{int:0>pad_width$}").unwrap();
                         }
                     } else {
-                        assert!(!prepend_sign);
-                        write!(&mut res, "{int_with_precision:>pad_width$}").unwrap();
+                        write!(&mut res, "{signed_string:>pad_width$}").unwrap();
                     }
                 } else {
-                    assert!(!prepend_sign);
-                    res.extend_from_slice(int_with_precision.as_bytes());
+                    res.extend_from_slice(signed_string.as_bytes());
                 }
             }
             b'@' if NS_LOG => {
@@ -420,23 +420,42 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
             }
             // Float specifiers
             b'f' => {
-                assert!(!prepend_sign);
                 assert!(!left_justified);
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 let precision = precision.unwrap_or(6);
 
-                let formatted = f_format(float, pad_width, pad_char, precision);
-                res.extend_from_slice(formatted.as_bytes());
+                let sign = if float.is_sign_negative() {
+                    "-"
+                } else if prepend_sign {
+                    "+"
+                } else {
+                    ""
+                };
+                let body = format!("{:.*}", precision, float.abs());
+                let signed = format!("{sign}{body}");
+                if pad_width > 0 && signed.len() < pad_width {
+                    let padding = pad_width - signed.len();
+                    if pad_char == '0' && !sign.is_empty() {
+                        // C places the sign before the zero padding.
+                        res.extend_from_slice(sign.as_bytes());
+                        res.extend(std::iter::repeat(b'0').take(padding));
+                        res.extend_from_slice(body.as_bytes());
+                    } else {
+                        res.extend(std::iter::repeat(pad_char as u8).take(padding));
+                        res.extend_from_slice(signed.as_bytes());
+                    }
+                } else {
+                    res.extend_from_slice(signed.as_bytes());
+                }
             }
             b'e' => {
-                assert!(!prepend_sign);
                 assert!(!left_justified);
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 let precision = precision.unwrap_or(6);
 
-                let formatted = e_format(float, pad_width, pad_char, precision);
+                let formatted = e_format(float, pad_width, pad_char, precision, prepend_sign);
                 res.extend_from_slice(formatted.as_bytes());
             }
             b'g' => {
@@ -494,7 +513,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 } else {
                     let precision: usize = (P - 1).try_into().unwrap();
 
-                    let formatted = e_format(float, pad_width, pad_char, precision);
+                    let formatted = e_format(float, pad_width, pad_char, precision, prepend_sign);
                     res.extend_from_slice(formatted.as_bytes());
                 }
             }
@@ -521,14 +540,26 @@ fn f_format(float: f64, pad_width: usize, pad_char: char, precision: usize) -> S
     }
 }
 
-fn e_format(float: f64, pad_width: usize, pad_char: char, precision: usize) -> String {
+fn e_format(
+    float: f64,
+    pad_width: usize,
+    pad_char: char,
+    precision: usize,
+    force_plus: bool,
+) -> String {
     let exponent = if float == 0.0 {
         0.0
     } else {
         float.abs().log10().floor()
     };
     let mantissa = float.abs() / 10f64.powf(exponent);
-    let sign = if float.is_sign_negative() { "-" } else { "" };
+    let sign = if float.is_sign_negative() {
+        "-"
+    } else if force_plus {
+        "+"
+    } else {
+        ""
+    };
     if pad_char == '0' {
         let float_exp_notation = format!("{mantissa:.precision$}e{exponent:+03}");
         format!(
