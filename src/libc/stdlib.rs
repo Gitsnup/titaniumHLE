@@ -25,6 +25,20 @@ pub struct State {
     random: u32,
     arc4random: u32,
     fcvt_buf: Option<MutPtr<u8>>,
+    /// Bump-allocator backing for [`sbrk`]. Some apps (e.g. Plants vs.
+    /// Zombies) statically link libSystem's allocator, which assumes the
+    /// heap returned by `sbrk` is one contiguous region. touchHLE's
+    /// general-purpose allocator returns scattered blocks, so we maintain
+    /// a large arena and hand out consecutive slices of it.
+    sbrk_arena: Option<SbrkArena>,
+}
+
+pub struct SbrkArena {
+    base: MutVoidPtr,
+    /// Total size of the arena.
+    size: GuestUSize,
+    /// Offset of the current break within the arena.
+    break_offset: GuestUSize,
 }
 
 // Sizes of zero are implementation-defined. macOS will happily give you back
@@ -38,13 +52,59 @@ fn malloc(env: &mut Environment, size: GuestUSize) -> MutVoidPtr {
     env.mem.alloc(size)
 }
 
+/// Size of the contiguous arena backing `sbrk`. Apps with statically-linked
+/// allocators (e.g. Plants vs. Zombies) carve their whole heap out of the
+/// region returned by `sbrk`, so it must be generous.
+const SBRK_ARENA_SIZE: GuestUSize = 64 * 1024 * 1024;
+
 /// Compatibility implementation for old ARMv6 C/C++ runtimes that request
 /// heap space through `_sbrk` instead of the exported malloc family.
+///
+/// Callers assume `sbrk` is a bump allocator over one contiguous region:
+/// `sbrk(n)` must return the previous break and advance it by `n`. The
+/// general-purpose allocator makes no such guarantee, so we back `sbrk`
+/// with a single arena.
 fn sbrk(env: &mut Environment, increment: i32) -> MutVoidPtr {
     if increment < 0 {
         return Ptr::from_bits(u32::MAX);
     }
-    env.mem.alloc(increment as GuestUSize)
+    if increment == 0 {
+        return match env.libc_state.stdlib.sbrk_arena {
+            Some(ref arena) => Ptr::from_bits(arena.base.to_bits() + arena.break_offset),
+            None => Ptr::from_bits(0),
+        };
+    }
+
+    let increment = increment as GuestUSize;
+    if env.libc_state.stdlib.sbrk_arena.is_none()
+        || env
+            .libc_state
+            .stdlib
+            .sbrk_arena
+            .as_ref()
+            .unwrap()
+            .break_offset
+            + increment
+            > env.libc_state.stdlib.sbrk_arena.as_ref().unwrap().size
+    {
+        if env.libc_state.stdlib.sbrk_arena.is_some() {
+            log!(
+                "Warning: sbrk exhausted its {} byte arena, allocating a new one. \n                 The app may misbehave if its allocator assumes a single contiguous heap.",
+                SBRK_ARENA_SIZE
+            );
+        }
+        let arena = env.mem.alloc(SBRK_ARENA_SIZE);
+        env.libc_state.stdlib.sbrk_arena = Some(SbrkArena {
+            base: arena,
+            size: SBRK_ARENA_SIZE,
+            break_offset: 0,
+        });
+    }
+
+    let arena = env.libc_state.stdlib.sbrk_arena.as_mut().unwrap();
+    let old_break = arena.base.to_bits() + arena.break_offset;
+    arena.break_offset += increment;
+    Ptr::from_bits(old_break)
 }
 
 fn malloc_size(env: &mut Environment, ptr: ConstVoidPtr) -> GuestUSize {
@@ -330,9 +390,7 @@ fn unsetenv(env: &mut Environment, name: ConstPtr<u8>) -> i32 {
 /// makes such apps unplayable, so instead we log and return, and the caller
 /// proceeds (leaking the block if the free was bogus).
 fn abort_no_return_workaround(_env: &mut Environment) {
-    log!(
-        "Warning: App called abort()! Trying to continue (this is a leak and may misbehave)."
-    );
+    log!("Warning: App called abort()! Trying to continue (this is a leak and may misbehave).");
 }
 
 fn exit(env: &mut Environment, exit_code: i32) {

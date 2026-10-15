@@ -6,9 +6,7 @@
 //! `UIPasteboard`.
 
 use crate::frameworks::foundation::ns_string;
-use crate::objc::{
-    id, msg_class, nil, objc_classes, retain, ClassExports, HostObject,
-};
+use crate::objc::{id, msg_class, nil, objc_classes, retain, ClassExports, HostObject};
 use crate::Environment;
 use std::collections::HashMap;
 

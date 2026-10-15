@@ -89,7 +89,17 @@ fn mkdir(env: &mut Environment, path: ConstPtr<u8>, mode: mode_t) -> i32 {
     }
 }
 
-/// Helper for [stat()] and [fstat()] that fills the data in the stat struct
+fn chmod(env: &mut Environment, path: ConstPtr<u8>, mode: mode_t) -> i32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
+    let path_str = env.mem.cstr_at_utf8(path).unwrap();
+    // Permissions are not emulated, so just pretend the change succeeded.
+    log_dbg!("chmod({:?} {:?}, {:#x}) => 0", path, path_str, mode);
+    0
+}
+
+/// Helper for [stat()] and [fstat()] that fills the data in the stat struct/// Helper for [stat()] and [fstat()] that fills the data in the stat struct
 fn fstat_inner(env: &mut Environment, fd: FileDescriptor, buf: MutPtr<stat>) -> i32 {
     let Some(file) = env.libc_state.posix_io.file_for_fd(fd) else {
         set_errno(env, EBADF);
@@ -177,4 +187,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(fstat(_, _)),
     export_c_func!(stat(_, _)),
     export_c_func!(lstat(_, _)),
+    export_c_func!(chmod(_, _)),
 ];

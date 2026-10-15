@@ -10,8 +10,12 @@
 
 use super::ns_string;
 use super::ns_value::NSNumberHostObject;
-use super::{NSComparisonResult, NSOrderedAscending, NSOrderedDescending, NSOrderedSame, NSUInteger};
-use crate::objc::{autorelease, id, msg, msg_class, objc_classes, release, retain, ClassExports, NSZonePtr};
+use super::{
+    NSComparisonResult, NSOrderedAscending, NSOrderedDescending, NSOrderedSame, NSUInteger,
+};
+use crate::objc::{
+    autorelease, id, msg, msg_class, objc_classes, release, retain, ClassExports, NSZonePtr,
+};
 
 pub const CLASSES: ClassExports = objc_classes! {
 

@@ -127,14 +127,15 @@ const CONSTANTS: ConstantExports = &[
     // referencing the symbol do not read a NULL pointer.
     ("_kCFNull", HostConstant::NSString("kCFNull")),
     (
-    "_kCFCoreFoundationVersionNumber",
-    HostConstant::Custom(|env| {
-        let version_number_ptr = env.mem.alloc_and_write(478.26f64); // iPhoneOS 2.1
-        env.mem
-            .alloc_and_write(version_number_ptr)
-            .cast()
-            .cast_const()
-    }),
-)];
+        "_kCFCoreFoundationVersionNumber",
+        HostConstant::Custom(|env| {
+            let version_number_ptr = env.mem.alloc_and_write(478.26f64); // iPhoneOS 2.1
+            env.mem
+                .alloc_and_write(version_number_ptr)
+                .cast()
+                .cast_const()
+        }),
+    ),
+];
 
 const FUNCTIONS: FunctionExports = &[export_c_func!(CFShow(_))];

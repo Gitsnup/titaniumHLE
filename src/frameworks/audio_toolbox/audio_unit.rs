@@ -323,7 +323,13 @@ fn AudioUnitSetParameter(
         || in_buffer_offset_frames != 0
         || !in_value.is_finite()
     {
-        log_dbg!("Unsupported AudioUnitSetParameter({}, {}, {}, {})", in_id, in_scope, in_element, in_buffer_offset_frames);
+        log_dbg!(
+            "Unsupported AudioUnitSetParameter({}, {}, {}, {})",
+            in_id,
+            in_scope,
+            in_element,
+            in_buffer_offset_frames
+        );
         return paramErr;
     }
     let Some(host_object) = audio_components::State::get(&mut env.framework_state)
@@ -361,7 +367,12 @@ fn AudioUnitGetParameter(
         || in_element != 0
         || out_value.is_null()
     {
-        log_dbg!("Unsupported AudioUnitGetParameter({}, {}, {})", in_id, in_scope, in_element);
+        log_dbg!(
+            "Unsupported AudioUnitGetParameter({}, {}, {})",
+            in_id,
+            in_scope,
+            in_element
+        );
         return paramErr;
     }
     let Some(host_object) = audio_components::State::get(&mut env.framework_state)

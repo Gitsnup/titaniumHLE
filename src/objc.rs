@@ -127,8 +127,14 @@ const CONSTANTS: ConstantExports = &[
     // and avoids a linker error for the integration tests.
     ("__objc_empty_vtable", HostConstant::NullPtr),
     ("__objc_empty_cache", HostConstant::NullPtr),
-    ("__NSConcreteStackBlock", HostConstant::Custom(get_dummy_object)),
-    ("__NSConcreteGlobalBlock", HostConstant::Custom(get_dummy_object)),
+    (
+        "__NSConcreteStackBlock",
+        HostConstant::Custom(get_dummy_object),
+    ),
+    (
+        "__NSConcreteGlobalBlock",
+        HostConstant::Custom(get_dummy_object),
+    ),
     ("_OBJC_EHTYPE_id", HostConstant::Custom(get_dummy_object)),
     (
         "_OBJC_EHTYPE_$_NSException",
@@ -204,13 +210,23 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(_Block_object_dispose(_, _)),
 ];
 
-
 /// C function `NSAllocateObject`: allocates an instance of `class` (with
 /// optional `extraBytes` and `zone`). Equivalent to `+[class allocWithZone:]`,
 /// so we just dispatch to that, which also picks the right host object type
 /// for HLE classes.
-fn NSAllocateObject(env: &mut Environment, class: Class, extra_bytes: u32, _zone: MutVoidPtr) -> id {
-    assert!(extra_bytes == 0, "NSAllocateObject with extraBytes != 0 is unimplemented");
-    let sel = env.objc.lookup_selector("allocWithZone:").expect("allocWithZone: selector missing");
+fn NSAllocateObject(
+    env: &mut Environment,
+    class: Class,
+    extra_bytes: u32,
+    _zone: MutVoidPtr,
+) -> id {
+    assert!(
+        extra_bytes == 0,
+        "NSAllocateObject with extraBytes != 0 is unimplemented"
+    );
+    let sel = env
+        .objc
+        .lookup_selector("allocWithZone:")
+        .expect("allocWithZone: selector missing");
     msg_send(env, (class, sel, MutVoidPtr::null()))
 }

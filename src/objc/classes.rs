@@ -1108,13 +1108,7 @@ pub(super) fn class_addMethod(
     name: SEL,
     imp: IMP,
     types: ConstPtr<u8>,
-) -> bool {    log!(
-        "DEBUG class_addMethod: class {} ({}) sel {} imp {:?}",
-        env.objc.get_class_name(cls),
-        if env.objc.borrow::<ClassHostObject>(cls).is_metaclass { "metaclass" } else { "class" },
-        name.as_str(&env.mem),
-        imp
-    );
+) -> bool {
     let types_copy = strdup(env, types).cast_const();
     let &mut ClassHostObject {
         ref mut methods,

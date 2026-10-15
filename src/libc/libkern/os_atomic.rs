@@ -103,6 +103,65 @@ fn OSSpinLockUnlock(env: &mut Environment, lock: MutPtr<i32>) {
     env.mem.write(lock, 0);
 }
 
+fn OSAtomicOr32(env: &mut Environment, the_mask: u32, the_value: MutPtr<u32>) -> u32 {
+    OSAtomicOr32Barrier(env, the_mask, the_value)
+}
+
+fn OSAtomicOr32Barrier(env: &mut Environment, the_mask: u32, the_value: MutPtr<u32>) -> u32 {
+    let curr = env.mem.read(the_value);
+    let new = curr | the_mask;
+    env.mem.write(the_value, new);
+    new
+}
+
+fn OSAtomicAnd32(env: &mut Environment, the_mask: u32, the_value: MutPtr<u32>) -> u32 {
+    OSAtomicAnd32Barrier(env, the_mask, the_value)
+}
+
+fn OSAtomicAnd32Barrier(env: &mut Environment, the_mask: u32, the_value: MutPtr<u32>) -> u32 {
+    let curr = env.mem.read(the_value);
+    let new = curr & the_mask;
+    env.mem.write(the_value, new);
+    new
+}
+
+fn OSAtomicXor32(env: &mut Environment, the_mask: u32, the_value: MutPtr<u32>) -> u32 {
+    OSAtomicXor32Barrier(env, the_mask, the_value)
+}
+
+fn OSAtomicXor32Barrier(env: &mut Environment, the_mask: u32, the_value: MutPtr<u32>) -> u32 {
+    let curr = env.mem.read(the_value);
+    let new = curr ^ the_mask;
+    env.mem.write(the_value, new);
+    new
+}
+
+fn OSAtomicTestAndSet(env: &mut Environment, the_bit: u32, the_value: MutPtr<u32>) -> bool {
+    OSAtomicTestAndSetBarrier(env, the_bit, the_value)
+}
+
+fn OSAtomicTestAndSetBarrier(env: &mut Environment, the_bit: u32, the_value: MutPtr<u32>) -> bool {
+    let bit = 1u32 << (the_bit & 0x1f);
+    let curr = env.mem.read(the_value);
+    env.mem.write(the_value, curr | bit);
+    curr & bit != 0
+}
+
+fn OSAtomicTestAndClear(env: &mut Environment, the_bit: u32, the_value: MutPtr<u32>) -> bool {
+    OSAtomicTestAndClearBarrier(env, the_bit, the_value)
+}
+
+fn OSAtomicTestAndClearBarrier(
+    env: &mut Environment,
+    the_bit: u32,
+    the_value: MutPtr<u32>,
+) -> bool {
+    let bit = 1u32 << (the_bit & 0x1f);
+    let curr = env.mem.read(the_value);
+    env.mem.write(the_value, curr & !bit);
+    curr & bit != 0
+}
+
 fn OSMemoryBarrier(_env: &mut Environment) {
     // no-op
 }
@@ -115,6 +174,16 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(OSAtomicCompareAndSwap32Barrier(_, _, _)),
     export_c_func!(OSAtomicCompareAndSwapPtr(_, _, _)),
     export_c_func!(OSAtomicCompareAndSwapPtrBarrier(_, _, _)),
+    export_c_func!(OSAtomicOr32(_, _)),
+    export_c_func!(OSAtomicOr32Barrier(_, _)),
+    export_c_func!(OSAtomicAnd32(_, _)),
+    export_c_func!(OSAtomicAnd32Barrier(_, _)),
+    export_c_func!(OSAtomicXor32(_, _)),
+    export_c_func!(OSAtomicXor32Barrier(_, _)),
+    export_c_func!(OSAtomicTestAndSet(_, _)),
+    export_c_func!(OSAtomicTestAndSetBarrier(_, _)),
+    export_c_func!(OSAtomicTestAndClear(_, _)),
+    export_c_func!(OSAtomicTestAndClearBarrier(_, _)),
     export_c_func!(OSSpinLockTry(_)),
     export_c_func!(OSSpinLockLock(_)),
     export_c_func!(OSSpinLockUnlock(_)),

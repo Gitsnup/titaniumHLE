@@ -864,11 +864,22 @@ pub const CLASSES: ClassExports = objc_classes! {
             string.as_bytes().to_vec()
         },
         NSUTF16LittleEndianStringEncoding => string.encode_utf16().flat_map(u16::to_le_bytes).collect(),
+        // TODO: Apple's NSUnicodeStringEncoding is documented as big-endian
+        // with a byte-order mark, but a C string in that representation is
+        // useless to consumers that read it as native-endian code units (the
+        // leading BOM bytes would be misinterpreted as text). Return
+        // native-endian UTF-16 without a BOM so that ASCII text survives as a
+        // plain C string; this matches what apps like Plants vs. Zombies
+        // expect when they pass the result to their own string handling.
+        NSUnicodeStringEncoding => string.encode_utf16().flat_map(u16::to_ne_bytes).collect(),
+        NSWindowsCP1252StringEncoding => {
+            WINDOWS_1252.encode(&string).0.into_owned()
+        }
         _ => unimplemented!("{}", encoding),
     };
     let null_size: GuestUSize = match encoding {
-        NSUTF8StringEncoding | NSASCIIStringEncoding | NSMacOSRomanStringEncoding | NSISOLatin1StringEncoding => 1,
-        NSUTF16LittleEndianStringEncoding => 2,
+        NSUTF8StringEncoding | NSASCIIStringEncoding | NSMacOSRomanStringEncoding | NSISOLatin1StringEncoding | NSWindowsCP1252StringEncoding => 1,
+        NSUTF16LittleEndianStringEncoding | NSUnicodeStringEncoding => 2,
         _ => unimplemented!()
     };
     let bytes_size = bytes.len() as GuestUSize;
