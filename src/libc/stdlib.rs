@@ -323,6 +323,18 @@ fn unsetenv(env: &mut Environment, name: ConstPtr<u8>) -> i32 {
     }
 }
 
+/// Returning from `abort()` is not standard-compliant: the guest calls it
+/// because something has already gone wrong. However, statically-linked
+/// libSystem code in older apps calls it from inside `free()` when a block
+/// doesn't match the emulator's transparent malloc layout. Panicking there
+/// makes such apps unplayable, so instead we log and return, and the caller
+/// proceeds (leaking the block if the free was bogus).
+fn abort_no_return_workaround(_env: &mut Environment) {
+    log!(
+        "Warning: App called abort()! Trying to continue (this is a leak and may misbehave)."
+    );
+}
+
 fn exit(env: &mut Environment, exit_code: i32) {
     // TODO: handle errno properly
     set_errno(env, 0);
@@ -665,6 +677,7 @@ fn fcvt(
 }
 
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func_aliased!("abort", abort_no_return_workaround()),
     export_c_func!(malloc(_)),
     export_c_func!(sbrk(_)),
     export_c_func!(malloc_size(_)),

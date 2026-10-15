@@ -444,6 +444,36 @@ impl Environment {
         )
         .map_err(|e| format!("Could not load executable: {e}"))?;
 
+        if bundle.bundle_identifier() == "com.popcap.PvZ" {
+            // Plants vs. Zombies statically links an old libSystem whose
+            // free() expects its own zone bookkeeping. Because libstdc++ (a
+            // guest dylib) allocates via touchHLE's transparent malloc, that
+            // free() receives pointers from outside its zones and calls
+            // abort(). Leak those blocks instead (resource loads are finite,
+            // so this is bounded) to keep the heap bookkeeping intact.
+            // 0xee114 is free()'s entry point in this exact build (v1.0,
+            // CFBundleVersion 524); BX LR in ARM encoding.
+            for (label, addr, saved_instr) in [
+                ("malloc", 0xedf94u32, 0xe92d40f7u32),
+                ("free", 0xee114, 0xe92d40f0),
+            ] {
+                let saved: u32 = mem.read(MutPtr::from_bits(addr));
+                if saved == saved_instr {
+                    mem.write(MutPtr::from_bits(addr), 0xe12fff1eu32);
+                    log!(
+                        "Applying game-specific patch for Plants vs. Zombies: neutralizing static libSystem {}().",
+                        label
+                    );
+                } else {
+                    log!(
+                        "Warning: PvZ static {}() patch skipped, unexpected instruction {:#x}",
+                        label,
+                        saved
+                    );
+                }
+            }
+        }
+
         let mut dylibs = Vec::new();
         for dylib in &executable.dynamic_libraries {
             // There are some Free Software libraries bundled with touchHLE and
