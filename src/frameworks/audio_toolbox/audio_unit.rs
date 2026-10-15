@@ -67,6 +67,8 @@ const kAudioUnitProperty_StreamFormat: AudioUnitPropertyID = 8;
 const kAudioOutputUnitProperty_IsRunning: AudioUnitPropertyID = 2001;
 const kAudioOutputUnitProperty_EnableIO: AudioUnitPropertyID = 2003;
 
+const kHALOutputParam_Volume: u32 = 14;
+
 const kAudioUnitRenderAction_PreRender: u32 = 1 << 2;
 const kAudioUnitRenderAction_PostRender: u32 = 1 << 3;
 
@@ -145,20 +147,48 @@ fn AudioUnitSetProperty(
     in_data: ConstVoidPtr,
     in_data_size: u32,
 ) -> OSStatus {
-    let host_object = audio_components::State::get(&mut env.framework_state)
+    let Some(host_object) = audio_components::State::get(&mut env.framework_state)
         .audio_component_instances
         .get_mut(&in_unit)
-        .unwrap();
+    else {
+        return paramErr;
+    };
 
     let result;
     match in_id {
         kAudioUnitProperty_SetRenderCallback => {
-            assert_eq!(in_scope, kAudioUnitScope_Global);
-            assert_eq!(in_data_size, guest_size_of::<AURenderCallbackStruct>());
+            // RemoteIO registers its input callback on input scope, bus 0.
+            // Keep the legacy global-scope spelling accepted as well.
+            if !matches!(in_scope, kAudioUnitScope_Global | kAudioUnitScope_Input)
+                || in_element != 0
+                || in_data.is_null()
+                || in_data_size != guest_size_of::<AURenderCallbackStruct>()
+            {
+                return paramErr;
+            }
             let render_callback = env.mem.read(in_data.cast::<AURenderCallbackStruct>());
-            host_object.render_callback = Some(render_callback);
+            host_object.render_callback = if render_callback.input_proc.to_ptr().is_null() {
+                None
+            } else {
+                Some(render_callback)
+            };
             result = 0;
             log_dbg!("AudioUnitSetProperty({:?}, kAudioUnitProperty_SetRenderCallback, {:?}, {:?}, {:?}, {:?}) -> {:?}", in_unit, in_scope, in_element, render_callback, in_data_size, result);
+        }
+        kAudioUnitProperty_MaximumFramesPerSlice => {
+            if in_scope != kAudioUnitScope_Global
+                || in_element != 0
+                || in_data.is_null()
+                || in_data_size != guest_size_of::<u32>()
+            {
+                return paramErr;
+            }
+            let maximum_frames = env.mem.read(in_data.cast::<u32>());
+            if maximum_frames == 0 {
+                return paramErr;
+            }
+            host_object.maximum_frames_per_slice = maximum_frames;
+            result = 0;
         }
         kAudioUnitProperty_StreamFormat => {
             assert_eq!(in_data_size, guest_size_of::<AudioStreamBasicDescription>());
@@ -276,7 +306,85 @@ fn AudioUnitGetProperty(
     0 // success
 }
 
+// Only the RemoteIO output-volume parameter is implemented here. Return an
+// error for mixer/EQ parameters rather than pretending to implement their DSP.
+fn AudioUnitSetParameter(
+    env: &mut Environment,
+    in_unit: AudioUnit,
+    in_id: u32,
+    in_scope: AudioUnitScope,
+    in_element: AudioUnitElement,
+    in_value: f32,
+    in_buffer_offset_frames: u32,
+) -> OSStatus {
+    if in_id != kHALOutputParam_Volume
+        || in_scope != kAudioUnitScope_Global
+        || in_element != 0
+        || in_buffer_offset_frames != 0
+        || !in_value.is_finite()
+    {
+        log_dbg!("Unsupported AudioUnitSetParameter({}, {}, {}, {})", in_id, in_scope, in_element, in_buffer_offset_frames);
+        return paramErr;
+    }
+    let Some(host_object) = audio_components::State::get(&mut env.framework_state)
+        .audio_component_instances
+        .get_mut(&in_unit)
+    else {
+        return paramErr;
+    };
+    let volume = in_value.clamp(0.0, 1.0);
+    host_object.output_volume = volume;
+    let al_source = host_object.al_source;
+    if let Some(source) = al_source {
+        let context = env
+            .framework_state
+            .audio_toolbox
+            .make_al_context_current(env.openal_manager.as_mut());
+        unsafe {
+            context.Sourcef(source, crate::audio::openal::AL_GAIN, volume);
+            assert_eq!(context.GetError(), 0);
+        }
+    }
+    0
+}
+
+fn AudioUnitGetParameter(
+    env: &mut Environment,
+    in_unit: AudioUnit,
+    in_id: u32,
+    in_scope: AudioUnitScope,
+    in_element: AudioUnitElement,
+    out_value: MutPtr<f32>,
+) -> OSStatus {
+    if in_id != kHALOutputParam_Volume
+        || in_scope != kAudioUnitScope_Global
+        || in_element != 0
+        || out_value.is_null()
+    {
+        log_dbg!("Unsupported AudioUnitGetParameter({}, {}, {})", in_id, in_scope, in_element);
+        return paramErr;
+    }
+    let Some(host_object) = audio_components::State::get(&mut env.framework_state)
+        .audio_component_instances
+        .get_mut(&in_unit)
+    else {
+        return paramErr;
+    };
+    env.mem.write(out_value, host_object.output_volume);
+    0
+}
+
 fn AudioOutputUnitStart(env: &mut Environment, ci: AudioUnit) -> OSStatus {
+    let Some(host_object) = audio_components::State::get(&mut env.framework_state)
+        .audio_component_instances
+        .get_mut(&ci)
+    else {
+        return paramErr;
+    };
+    if host_object.started {
+        return 0;
+    }
+    let volume = host_object.output_volume;
     let context = env
         .framework_state
         .audio_toolbox
@@ -285,6 +393,7 @@ fn AudioOutputUnitStart(env: &mut Environment, ci: AudioUnit) -> OSStatus {
     let mut source: ALuint = 0;
     unsafe {
         context.GenSources(1, &mut source);
+        context.Sourcef(source, crate::audio::openal::AL_GAIN, volume);
         context.SourcePlay(source);
         assert_eq!(context.GetError(), 0);
     }
@@ -439,7 +548,13 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
     // every frame over 2048 until it reaches the provided frame number.
     // TODO: Verify if this behavior is right
     let elapsed_time = now.duration_since(audio_unit_host_object.last_render_time.unwrap());
-    let number_frames = ((elapsed_time.as_secs_f64() * sample_rate) as u32).min(2048);
+    let number_frames = ((elapsed_time.as_secs_f64() * sample_rate) as u32)
+        .min(audio_unit_host_object.maximum_frames_per_slice)
+        .min(2048);
+    if number_frames == 0 {
+        audio_unit_host_object.is_running_handler = false;
+        return;
+    }
 
     let bytes_per_channel = stream_format.bits_per_channel / 8;
     let actual_bytes_per_frame = stream_format.channels_per_frame * bytes_per_channel;
@@ -453,7 +568,7 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
         MutVoidPtr,
         MutVoidPtr,
         Option<MutVoidPtr>,
-    ) = if input_stream_format.is_some() {
+    ) = if input_stream_format.is_some() || output_stream_format.is_none() {
         let bufferData = env.mem.alloc(buffer_size);
         let audio_buffer_list: AudioBufferList<1> = AudioBufferList {
             number_buffers: 1,
@@ -622,6 +737,8 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioUnitUninitialize(_)),
     export_c_func!(AudioUnitSetProperty(_, _, _, _, _, _)),
     export_c_func!(AudioUnitGetProperty(_, _, _, _, _, _)),
+    export_c_func!(AudioUnitSetParameter(_, _, _, _, _, _)),
+    export_c_func!(AudioUnitGetParameter(_, _, _, _, _)),
     export_c_func!(AudioOutputUnitStart(_)),
     export_c_func!(AudioOutputUnitStop(_)),
 ];
