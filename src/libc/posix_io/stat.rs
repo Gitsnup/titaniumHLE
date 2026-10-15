@@ -99,7 +99,7 @@ fn chmod(env: &mut Environment, path: ConstPtr<u8>, mode: mode_t) -> i32 {
     0
 }
 
-/// Helper for [stat()] and [fstat()] that fills the data in the stat struct/// Helper for [stat()] and [fstat()] that fills the data in the stat struct
+/// Helper for [stat()] and [fstat()] that fills the data in the stat struct
 fn fstat_inner(env: &mut Environment, fd: FileDescriptor, buf: MutPtr<stat>) -> i32 {
     let Some(file) = env.libc_state.posix_io.file_for_fd(fd) else {
         set_errno(env, EBADF);
