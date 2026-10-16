@@ -204,7 +204,7 @@ macro_rules! _objc_method {
             $this: $crate::objc::id,
             #[allow(unused_variables)]
             $_cmd: $crate::objc::SEL,
-            $($arg: $ty,)*
+            $(#[allow(unused_variables)] $arg: $ty,)*
             $(#[allow(unused_mut)] mut $va_arg: $va_type,)?
         | -> $retty {
             const _OBJC_CURRENT_SELECTOR: &str = stringify!($cmd_name);
@@ -597,6 +597,7 @@ impl ObjC {
 
             // We don't have a real implementation for this class, use a
             // placeholder.
+            log!("Using placeholder class for unimplemented class {}", name);
 
             class_host_object = Box::new(UnimplementedClass {
                 name: name.to_string(),
@@ -1024,6 +1025,13 @@ pub(super) fn objc_getClass(env: &mut Environment, name: ConstPtr<u8>) -> id {
 pub(super) fn class_getSuperclass(env: &mut Environment, cls: Class) -> Class {
     if cls == nil {
         nil
+    } else if let Some(unimpl) = env
+        .objc
+        .get_host_object(cls)
+        .and_then(|h| h.as_any().downcast_ref::<UnimplementedClass>())
+    {
+        log!("class_getSuperclass on unimplemented class {}", unimpl.name);
+        nil
     } else {
         env.objc.borrow::<ClassHostObject>(cls).superclass
     }
@@ -1031,6 +1039,16 @@ pub(super) fn class_getSuperclass(env: &mut Environment, cls: Class) -> Class {
 
 pub(super) fn class_getInstanceSize(env: &mut Environment, cls: Class) -> GuestUSize {
     if cls == nil {
+        0
+    } else if let Some(unimpl) = env
+        .objc
+        .get_host_object(cls)
+        .and_then(|h| h.as_any().downcast_ref::<UnimplementedClass>())
+    {
+        log!(
+            "class_getInstanceSize on unimplemented class {}",
+            unimpl.name
+        );
         0
     } else {
         env.objc.borrow::<ClassHostObject>(cls).instance_size

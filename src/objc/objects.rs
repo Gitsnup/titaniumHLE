@@ -249,6 +249,14 @@ impl super::ObjC {
                 return res;
             } else if let Some(next) = host_object.as_superclass() {
                 host_object = next;
+            } else if let Some(unimpl) = host_object
+                .as_any()
+                .downcast_ref::<super::classes::UnimplementedClass>()
+            {
+                panic!(
+                    "borrow of Unimplemented class {} for {object:?}",
+                    unimpl.name
+                );
             } else {
                 panic!(
                     "Could not find host object with type {:?}, found {:?} for {object:?}",
@@ -345,6 +353,11 @@ impl super::ObjC {
             host_object,
             refcount,
         } = self.objects.remove(&object).unwrap();
+
+        self.recently_freed.push_back(object);
+        while self.recently_freed.len() > 64 {
+            self.recently_freed.pop_front();
+        }
 
         if let Some(refcount) = refcount {
             // This is a serious bug if it ever happens in host code.

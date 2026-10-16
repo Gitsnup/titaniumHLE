@@ -425,6 +425,24 @@ pub const CLASSES: ClassExports = objc_classes! {
     let new_dict: id = msg![env; new_dict initWithObjects:objects forKeys:keys];
     autorelease(env, new_dict)
 }
++ (id)dictionaryWithObjects:(ConstPtr<id>)objects
+                    forKeys:(ConstPtr<id>)keys
+                      count:(NSUInteger)count {
+    // The objects and keys here are C arrays (id*) of at least `count` items,
+    // not NSArray instances.
+    let new_dict: id = msg![env; this alloc];
+    {
+        let mut host_object =
+            std::mem::take(env.objc.borrow_mut::<DictionaryHostObject>(new_dict));
+        for i in 0..count {
+            let key: id = env.mem.read(keys + i);
+            let object: id = env.mem.read(objects + i);
+            host_object.insert(env, key, object, /* copy_key: */ true);
+        }
+        *env.objc.borrow_mut(new_dict) = host_object;
+    }
+    autorelease(env, new_dict)
+}
 
 + (id)dictionaryWithDictionary:(id)dict { // NSDictionary*
     let new_dict: id = msg![env; this alloc];

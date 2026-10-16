@@ -9,7 +9,8 @@
 //! - [Apple's documentation of `class_addMethod`](https://developer.apple.com/documentation/objectivec/1418901-class_addmethod?language=objc)
 
 use super::{
-    id, nil, objc_super, Class, ClassHostObject, MsgSendSignature, MsgSendSuperSignature, ObjC, SEL,
+    id, nil, objc_super, Class, ClassHostObject, MsgSendSignature, MsgSendSuperSignature, ObjC,
+    UnimplementedClass, SEL,
 };
 use crate::abi::{CallFromGuest, DotDotDot, GuestArg, GuestFunction, GuestRet};
 use crate::mem::{guest_size_of, ConstPtr, GuestUSize, Mem, Ptr, SafeRead};
@@ -197,6 +198,17 @@ impl ObjC {
     pub fn class_has_method(&self, class: Class, sel: SEL) -> bool {
         let mut class = class;
         loop {
+            if let Some(unimpl) = self
+                .get_host_object(class)
+                .and_then(|h| h.as_any().downcast_ref::<UnimplementedClass>())
+            {
+                log!(
+                    "class_has_method on unimplemented class {} ({:?}), returning false",
+                    unimpl.name,
+                    class
+                );
+                return false;
+            }
             let &ClassHostObject {
                 superclass,
                 ref methods,
@@ -214,6 +226,16 @@ impl ObjC {
 
     /// Variant of `class_has_method` which doesn't account for inheritance.
     pub fn class_has_uninherited_method(&self, class: Class, sel: SEL) -> bool {
+        if let Some(unimpl) = self
+            .get_host_object(class)
+            .and_then(|h| h.as_any().downcast_ref::<UnimplementedClass>())
+        {
+            log!(
+                "class_has_uninherited_method on unimplemented class {}",
+                unimpl.name
+            );
+            return false;
+        }
         let ClassHostObject { methods, .. } = self.borrow(class);
         methods.contains_key(&sel)
     }
@@ -295,17 +317,25 @@ impl ObjC {
                 return false;
             }
 
+            if self
+                .get_host_object(class)
+                .and_then(|h| h.as_any().downcast_ref::<UnimplementedClass>())
+                .is_some()
+            {
+                return false;
+            }
+
             let &ClassHostObject {
-                superclass,
+                superclass: class_superclass,
                 ref methods,
                 ..
             } = self.borrow(class);
             if methods.contains_key(&sel) {
                 return true;
-            } else if superclass == nil {
-                panic!();
+            } else if class_superclass == nil {
+                return false;
             } else {
-                class = superclass;
+                class = class_superclass;
             }
         }
     }

@@ -42,6 +42,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     todo_objc_setter!(this, time_zone);
 }
 
+// The formatter ignores the locale for now; storing it is enough to satisfy
+// apps that set it unconditionally after allocating the formatter.
+- (())setLocale:(id)locale {
+    todo_objc_setter!(this, locale);
+}
+
 - (id)stringFromDate:(id)date {
     let &NSDateFormatterHostObject { date_format } = env.objc.borrow(this);
     let format = ns_string::to_rust_string(env, date_format.unwrap()).to_string().clone();

@@ -25,7 +25,7 @@ use crate::objc::messages::ThreadInitializer;
 use crate::MutexId;
 use std::collections::HashMap;
 
-mod classes;
+pub(super) mod classes;
 mod messages;
 mod methods;
 mod objects;
@@ -76,6 +76,10 @@ pub struct ObjC {
     /// If an object isn't in this map, we will consider it not to exist.
     objects: HashMap<id, HostObjectEntry>,
 
+    /// Ring buffer of the most recently deallocated object ids, for debugging
+    /// use-after-dealloc message sends.
+    recently_freed: std::collections::VecDeque<id>,
+
     /// Known classes.
     ///
     /// Look at the `isa` to get the metaclass for a class.
@@ -98,6 +102,7 @@ impl ObjC {
         ObjC {
             selectors: HashMap::new(),
             objects: HashMap::new(),
+            recently_freed: std::collections::VecDeque::new(),
             classes: HashMap::new(),
             sync_mutexes: HashMap::new(),
             initializer_threads: HashMap::new(),
@@ -167,6 +172,10 @@ fn objc_autorelease(env: &mut Environment, object: id) -> id {
 fn objc_autoreleaseReturnValue(env: &mut Environment, object: id) -> id {
     autorelease(env, object)
 }
+fn objc_retainAutoreleaseReturnValue(env: &mut Environment, object: id) -> id {
+    let object = retain(env, object);
+    autorelease(env, object)
+}
 
 fn _Block_object_dispose(_env: &mut Environment, object: ConstVoidPtr, flags: i32) {
     // `BLOCK_FIELD_IS_BYREF` flag defines an on stack structure holding
@@ -201,6 +210,7 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_release(_)),
     export_c_func!(objc_autorelease(_)),
     export_c_func!(objc_autoreleaseReturnValue(_)),
+    export_c_func!(objc_retainAutoreleaseReturnValue(_)),
     export_c_func!(objc_sync_enter(_)),
     export_c_func!(objc_sync_exit(_)),
     export_c_func!(NSAllocateObject(_, _, _)),

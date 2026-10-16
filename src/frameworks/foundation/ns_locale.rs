@@ -175,14 +175,28 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithLocaleIdentifier:(id)string { // NSString *
     let str = ns_string::to_rust_string(env, string);
     log_dbg!("[(NSLocale *){:?} initWithLocaleIdentifier:'{}']", this, str);
-    retain(env, string);
-    // Loosely assume 2-char lang code here
-    // TODO: locale identifier parsing
-    assert_eq!(2, str.len());
-    assert!(str.to_lowercase().eq(&str));
-    assert!(!str.contains('_') && !str.contains('-'));
-    assert!(env.objc.borrow::<NSLocaleHostObject>(this).language_code == nil);
-    env.objc.borrow_mut::<NSLocaleHostObject>(this).language_code = string;
+    // Locale identifiers look like "en", "en_US" or "en_US@posix". Parse the
+    // language and (optional) country components instead of assuming a bare
+    // 2-char language code.
+    let base = str.split('@').next().unwrap_or(&str);
+    let mut parts = base.splitn(2, ['_', '-']);
+    let language = parts.next().unwrap_or("");
+    let country = parts.next().unwrap_or("");
+    assert!(!language.is_empty());
+    assert!(!language.contains('_') && !language.contains('-'));
+    let language_code = ns_string::from_rust_string(env, language.to_string());
+    let country_code = if country.is_empty() {
+        nil
+    } else {
+        ns_string::from_rust_string(env, country.to_string())
+    };
+    let host_object = NSLocaleHostObject {
+        country_code,
+        language_code,
+    };
+    let slot = env.objc.borrow_mut::<NSLocaleHostObject>(this);
+    slot.country_code = host_object.country_code;
+    slot.language_code = host_object.language_code;
     this
 }
 

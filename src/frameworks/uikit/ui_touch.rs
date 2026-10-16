@@ -17,7 +17,6 @@ use crate::window::{Coords, Event, FingerId};
 use crate::Environment;
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
-
 pub type UITouchPhase = NSInteger;
 pub const UITouchPhaseBegan: UITouchPhase = 0;
 pub const UITouchPhaseMoved: UITouchPhase = 1;
@@ -70,7 +69,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (CGPoint)locationInView:(id)that_view { // UIView*
-    let &UITouchHostObject { location, window, .. } = env.objc.borrow(this);
+    let &UITouchHostObject { location, window, .. } = env.objc.borrow(this);    log!("DBG locationInView:{:?} on touch at {:?}", that_view, location);
     let location_in_window: CGPoint = msg![env; window convertPoint:location fromWindow:nil];
     if that_view == nil {
         location_in_window

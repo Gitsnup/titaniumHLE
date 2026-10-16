@@ -35,8 +35,20 @@ pub(super) struct ThreadInitializer {
     waiters: u32,
 }
 
-fn maybe_initialize_class(env: &mut Environment, receiver: id) {
-    let class_host_object = env.objc.get_host_object(receiver).unwrap();
+fn maybe_initialize_class(env: &mut Environment, receiver: id, selector: Option<SEL>) {
+    let class_host_object = match env.objc.get_host_object(receiver) {
+        Some(host_object) => host_object,
+        None => {
+            let r0 = env.cpu.regs()[0];
+            let r1 = env.cpu.regs()[1];
+            let sel_name = selector
+                .map(|sel| sel.as_str(&env.mem).to_string())
+                .unwrap_or_default();
+            panic!(
+                "maybe_initialize_class: receiver {receiver:?} is not a known object (r0={r0:?}, r1={r1:?}, selector={sel_name:?})"
+            );
+        }
+    };
     let Some(&super::ClassHostObject {
         superclass,
         is_metaclass,
@@ -66,7 +78,7 @@ fn maybe_initialize_class(env: &mut Environment, receiver: id) {
     // This class is not initialized, but there might be classes above it in the
     // hierarchy that also need to be checked, so check those first.
     if !superclass.is_null() {
-        maybe_initialize_class(env, superclass);
+        maybe_initialize_class(env, superclass, None);
     }
 
     if is_initialized == InitializationStatus::Initializing {
@@ -215,7 +227,7 @@ fn objc_msgSend_inner(
     }
 
     if !skip_initialize {
-        maybe_initialize_class(env, receiver);
+        maybe_initialize_class(env, receiver, Some(selector));
     }
 
     // Traverse the chain of superclasses to find the method implementation.
@@ -490,7 +502,13 @@ pub(super) fn objc_msgSendSuper2(
     super_ptr: ConstPtr<objc_super>,
     selector: SEL,
 ) {
+    let super_ptr_addr = super_ptr.to_bits();
     let objc_super { receiver, class } = env.mem.read(super_ptr);
+    log_dbg!(
+        "objc_msgSendSuper2: super_ptr={:#x} receiver={receiver:?} class={class:?} (class name: {:?})",
+        super_ptr_addr,
+        env.objc.get_class_name(class)
+    );
 
     // Rewrite first argument to match the normal ABI.
     crate::abi::write_next_arg(&mut 0, env.cpu.regs_mut(), &mut env.mem, receiver);

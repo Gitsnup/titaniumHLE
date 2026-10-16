@@ -22,6 +22,7 @@ pub const DYLIB_LIST: &[&super::HostDylib] = &[
     &frameworks::core_foundation::DYLIB,
     &frameworks::core_graphics::DYLIB,
     &frameworks::core_location::DYLIB,
+    &frameworks::ad_support::DYLIB,
     &frameworks::core_motion::DYLIB,
     &frameworks::core_telephony::DYLIB,
     &frameworks::foundation::DYLIB,

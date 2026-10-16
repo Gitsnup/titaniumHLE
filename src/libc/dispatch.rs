@@ -13,6 +13,16 @@ use crate::dyld::{export_c_func, FunctionExports};
 use crate::mem::{MutPtr, MutVoidPtr};
 use crate::Environment;
 
+#[allow(non_camel_case_types)]
+type dispatch_queue_t = MutVoidPtr;
+#[allow(non_camel_case_types)]
+type dispatch_time_t = i64;
+
+/// Constant passed to [dispatch_time] to indicate "as soon as possible".
+const DISPATCH_TIME_NOW: dispatch_time_t = 0;
+/// Constant indicating a request should never run.
+const DISPATCH_TIME_FOREVER: dispatch_time_t = i64::MAX;
+
 /// Runs a block once, in a thread-safe manner.
 ///
 /// TODO: proper synchronization for multi-threaded cases. For now this is
@@ -39,4 +49,44 @@ fn dispatch_once(env: &mut Environment, predicate: MutPtr<i32>, block: MutVoidPt
     let (): () = invoke.call_from_host(env, (block,));
 }
 
-pub const FUNCTIONS: FunctionExports = &[export_c_func!(dispatch_once(_, _))];
+/// Converts a `dispatch_time_t` (relative or absolute) to a wall-clock time
+/// in nanoseconds. Only the "relative to now" case is implemented; absolute
+fn dispatch_time(
+    env: &mut Environment,
+    when: dispatch_time_t,
+    seconds: i64,
+    nanos: i64,
+) -> dispatch_time_t {
+    let _ = (env, when);
+    // TODO: support DISPATCH_TIME_WALLCALENDAR etc.
+    match when {
+        DISPATCH_TIME_NOW => seconds
+            .checked_mul(1_000_000_000)
+            .and_then(|s| s.checked_add(nanos))
+            .unwrap_or(i64::MAX),
+        _ => todo!(),
+    }
+}
+
+fn dispatch_after(
+    env: &mut Environment,
+    when: dispatch_time_t,
+    queue: dispatch_queue_t,
+    block: MutVoidPtr,
+) {
+    let _ = (queue, when);
+    // FIXME: Arbitrarily maps to the main queue since concurrent queues are
+    // not implemented.
+    if when == DISPATCH_TIME_FOREVER {
+        return;
+    }
+    // Simulate "after a delay" as "as soon as possible" on the main loop,
+    // which matches how touchHLE treats other async work today.
+    dispatch_once(env, MutPtr::null(), block)
+}
+
+pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(dispatch_once(_, _)),
+    export_c_func!(dispatch_time(_, _, _)),
+    export_c_func!(dispatch_after(_, _, _)),
+];

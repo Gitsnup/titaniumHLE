@@ -131,11 +131,28 @@ pub const CLASSES: ClassExports = objc_classes! {
     match *env.objc.borrow(this) {
         NSURLHostObject::FileURL { ns_string, .. } => ns_string,
         NSURLHostObject::OtherURL { ns_string } => {
-            // TODO: Support full URLs, not only ones that are just a path.
-            // FIXME: This should do unescaping.
-            // TODO: Avoid copy.
-            assert!(to_rust_string(env, ns_string).starts_with('/'));
-            ns_string
+            // TODO: Support full URLs with proper parsing and unescaping.
+            let url = to_rust_string(env, ns_string);
+            // Strip the scheme and host, if any (e.g. "http://host/path" ->
+            // "/path"). A relative reference ("foo") is its own path.
+            let path_part: &str = match url.split_once("://") {
+                Some((_scheme, rest)) => match rest.find('/') {
+                    Some(idx) => &rest[idx..],
+                    None => "",
+                },
+                None => &url,
+            };
+            // Strip query and fragment components.
+            let path_part = path_part
+                .split_once('?')
+                .map(|(path, _query)| path)
+                .unwrap_or(path_part);
+            let path_part = path_part
+                .split_once('#')
+                .map(|(path, _fragment)| path)
+                .unwrap_or(path_part);
+            let new = from_rust_string(env, path_part.to_string());
+            autorelease(env, new)
         },
     }
 }
@@ -188,7 +205,28 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; NSURL fileURLWithPath:path]
 }
 
-// TODO: more constructors, more accessors
+- (id)URLByAppendingPathComponent:(id)path_component { // NSString *
+    let (is_file, ns_string): (bool, id) = match *env.objc.borrow(this) {
+        NSURLHostObject::FileURL { ns_string, .. } => (true, ns_string),
+        NSURLHostObject::OtherURL { ns_string } => (false, ns_string),
+    };
+    if is_file {
+        let path: id = msg![env; ns_string stringByAppendingPathComponent:path_component];
+        msg_class![env; NSURL fileURLWithPath:path]
+    } else {
+        let base = to_rust_string(env, ns_string);
+        let component = to_rust_string(env, path_component);
+        let joined = if base.ends_with('/') {
+            format!("{}{}", base, component)
+        } else {
+            format!("{}/{}", base, component)
+        };
+        let new_string = from_rust_string(env, joined);
+        msg_class![env; NSURL URLWithString:new_string]
+    }
+}
+
+// TODO: more constructors, more accessors// TODO: more constructors, more accessors
 
 @end
 

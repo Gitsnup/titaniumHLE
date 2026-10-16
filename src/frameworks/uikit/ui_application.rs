@@ -45,6 +45,7 @@ pub const UIInterfaceOrientationLandscapeRight: UIInterfaceOrientation =
 
 type UIRemoteNotificationType = NSUInteger;
 type UIStatusBarAnimation = NSInteger;
+type UIApplicationState = NSInteger;
 type UIStatusBarStyle = NSInteger;
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -98,6 +99,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+- (UIApplicationState)applicationState {
+    // We only support the app running in the foreground.
+    0 // UIApplicationStateActive
+}
 - (bool)isStatusBarHidden {
     env.framework_state.uikit.ui_application.status_bar_hidden
 }
