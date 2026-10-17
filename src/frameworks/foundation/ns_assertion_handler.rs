@@ -5,8 +5,8 @@
  */
 //! `NSAssertionHandler`.
 
-use crate::frameworks::foundation::NSInteger;
 use crate::frameworks::foundation::ns_string;
+use crate::frameworks::foundation::NSInteger;
 use crate::objc::{id, msg, objc_classes, ClassExports, HostObject, NSZonePtr, SEL};
 
 #[derive(Default)]

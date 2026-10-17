@@ -8,12 +8,12 @@
 use crate::abi::GuestFunction;
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_foundation::cf_allocator::{kCFAllocatorDefault, CFAllocatorRef};
+use crate::frameworks::core_foundation::cf_run_loop::CFRunLoopRef;
+use crate::frameworks::core_foundation::cf_string::CFStringRef;
 use crate::frameworks::core_foundation::CFTypeRef;
 use crate::libc::sys::socket::sockaddr;
 use crate::mem::{ConstPtr, MutPtr, MutVoidPtr, Ptr};
 use crate::objc::{msg, objc_classes, Class, ClassExports, HostObject};
-use crate::frameworks::core_foundation::cf_run_loop::CFRunLoopRef;
-use crate::frameworks::core_foundation::cf_string::CFStringRef;
 use crate::Environment;
 use std::net::SocketAddrV4;
 
