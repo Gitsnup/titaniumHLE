@@ -408,6 +408,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     file_attributes_common(env, guest_path)
 }
 
+- (bool)setAttributes:(id)attributes // NSDictionary<NSFileAttributeKey, id> *
+             ofItemAtPath:(id)path // NSString *
+                    error:(MutPtr<id>)error { // NSError **
+    let attributes_count: NSUInteger = msg![env; attributes count];
+    log_dbg!("[(NSFileManager *){:?} setAttributes:{:?} ofItemAtPath:{:?} error] ({} attributes)", this, attributes, path, attributes_count);
+
+    // TODO: actually apply the attributes. For now, pretend the operation
+    // succeeded, since callers usually treat failure as fatal.
+    if !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    true
+}
+
 - (id)attributesOfFileSystemForPath:(id)_path
                               error:(MutPtr<id>)error {
     // TODO: other attributes

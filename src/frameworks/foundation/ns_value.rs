@@ -16,7 +16,7 @@ use crate::frameworks::core_foundation::cf_number::{
 use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_keyed_archiver::get_value_to_encode_for_current_key;
 use crate::frameworks::foundation::NSInteger;
-use crate::mem::{ConstVoidPtr, MutVoidPtr};
+use crate::mem::{ConstPtr, ConstVoidPtr, MutVoidPtr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
     HostObject, NSZonePtr,
@@ -428,6 +428,37 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (i8)charValue {
     env.objc.borrow::<NSNumberHostObject>(this).as_char()
+}
+
+- (ConstPtr<u8>)objCType {
+    // The type codes must match the guest's ABI: on 32-bit targets,
+    // NSInteger is `i` and NSUInteger is `I`.
+    let type_code = match env.objc.borrow::<NSNumberHostObject>(this) {
+        NSNumberHostObject::Bool(_) | NSNumberHostObject::Char(_) => &b"c\0"[..],
+        NSNumberHostObject::Int(_) => b"i\0",
+        NSNumberHostObject::Double(_) => b"d\0",
+        NSNumberHostObject::Float(_) => b"f\0",
+        NSNumberHostObject::LongLong(_) => b"q\0",
+        NSNumberHostObject::Short(_) => b"s\0",
+        NSNumberHostObject::UnsignedInt(_) => b"I\0",
+        NSNumberHostObject::UnsignedLongLong(_) => b"Q\0",
+        NSNumberHostObject::UnsignedShort(_) => b"S\0",
+    };
+    env.mem.alloc_and_write_cstr(type_code).cast_const()
+}- (ConstPtr<u8>)objCType {
+    let type_code: &[u8] = match env.objc.borrow::<NSNumberHostObject>(this) {
+        NSNumberHostObject::Bool(_) => b"c", // BOOL is stored as a char
+        NSNumberHostObject::Char(_) => b"c",
+        NSNumberHostObject::Int(_) => b"i",
+        NSNumberHostObject::Double(_) => b"d",
+        NSNumberHostObject::Float(_) => b"f",
+        NSNumberHostObject::LongLong(_) => b"q",
+        NSNumberHostObject::Short(_) => b"s",
+        NSNumberHostObject::UnsignedInt(_) => b"I",
+        NSNumberHostObject::UnsignedLongLong(_) => b"Q",
+        NSNumberHostObject::UnsignedShort(_) => b"S",
+    };
+    env.mem.alloc_and_write_cstr(type_code).cast_const()
 }
 
 - (id)description {

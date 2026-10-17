@@ -17,13 +17,17 @@ use crate::Environment;
 
 pub mod _nib_archive_decoder;
 pub mod ns_array;
+pub mod ns_assertion_handler;
 pub mod ns_autorelease_pool;
 pub mod ns_bundle;
 pub mod ns_character_set;
 pub mod ns_coder;
 pub mod ns_data;
+pub mod ns_calendar;
 pub mod ns_date;
+pub mod ns_date_components;
 pub mod ns_date_formatter;
+pub mod ns_decimal_number;
 pub mod ns_dictionary;
 pub mod ns_enumerator;
 pub mod ns_error;
@@ -32,6 +36,7 @@ pub mod ns_file_handle;
 pub mod ns_file_manager;
 pub mod ns_garbage_collector;
 pub mod ns_http_cookie;
+pub mod ns_http_cookie_storage;
 pub mod ns_index_path;
 pub mod ns_invocation;
 pub mod ns_keyed_archiver;
@@ -67,19 +72,24 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     class_exports: &[
         _nib_archive_decoder::CLASSES,
         ns_array::CLASSES,
+        ns_assertion_handler::CLASSES,
         ns_autorelease_pool::CLASSES,
         ns_bundle::CLASSES,
         ns_character_set::CLASSES,
         ns_coder::CLASSES,
+        ns_calendar::CLASSES,
         ns_data::CLASSES,
         ns_date::CLASSES,
+        ns_date_components::CLASSES,
         ns_date_formatter::CLASSES,
+        ns_decimal_number::CLASSES,
         ns_dictionary::CLASSES,
         ns_enumerator::CLASSES,
         ns_error::CLASSES,
         ns_file_handle::CLASSES,
         ns_file_manager::CLASSES,
         ns_garbage_collector::CLASSES,
+        ns_http_cookie_storage::CLASSES,
         ns_index_path::CLASSES,
         ns_invocation::CLASSES,
         ns_keyed_archiver::CLASSES,
@@ -113,6 +123,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_exception::CONSTANTS,
         ns_file_manager::CONSTANTS,
         ns_keyed_unarchiver::CONSTANTS,
+        ns_calendar::CONSTANTS,
         ns_locale::CONSTANTS,
         ns_run_loop::CONSTANTS,
     ],
@@ -127,8 +138,10 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 
 #[derive(Default)]
 pub struct State {
+    ns_assertion_handler: ns_assertion_handler::State,
     ns_bundle: ns_bundle::State,
     ns_file_manager: ns_file_manager::State,
+    ns_http_cookie_storage: ns_http_cookie_storage::State,
     ns_locale: ns_locale::State,
     ns_notification_center: ns_notification_center::State,
     ns_null: ns_null::State,
@@ -150,6 +163,9 @@ pub type NSUInteger = u32;
 
 // this should be equal to NSIntegerMax
 pub const NSNotFound: i32 = 0x7fffffff;
+
+/// Sentinel for unset fields in `NSDateComponents`.
+pub const NSUndefinedDateComponent: NSInteger = NSInteger::MIN;
 
 #[derive(Debug)]
 #[repr(C, packed)]
