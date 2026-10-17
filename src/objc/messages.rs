@@ -226,10 +226,35 @@ fn objc_msgSend_inner(
         return;
     }
 
+    if env.objc.block_dummy_classes.contains(&orig_class.to_bits()) {
+        // The receiver is a guest stack or global block literal: its isa is
+        // one of the dummy block classes exported by our objc runtime (see
+        // objc.rs), so normal class lookup can't run. The real block runtime
+        // classes implement a small set of methods; handle those directly.
+        //
+        // Retain/release/autorelease/copy on a stack block are effectively
+        // no-ops here: we do not migrate blocks off the guest stack, and the
+        // guest code that owns the block keeps it alive for as long as the
+        // (synchronous) completion-handler style callbacks run.
+        let sel_name = selector.as_str(&env.mem);
+        match sel_name {
+            "copy" | "mutableCopy" | "retain" | "autorelease" => {
+                env.cpu.regs_mut()[0] = receiver.to_bits();
+            }
+            "release" => {
+                env.cpu.regs_mut()[0..2].fill(0);
+            }
+            _ => panic!(
+                "unimplemented message \"{}\" to guest block {:?}",
+                sel_name, receiver
+            ),
+        }
+        return;
+    }
+
     if !skip_initialize {
         maybe_initialize_class(env, receiver, Some(selector));
     }
-
     // Traverse the chain of superclasses to find the method implementation.
 
     let mut class = orig_class;
@@ -336,7 +361,9 @@ Type mismatch when sending message {} to {:?}!
                     }
                     // We can't create a new stack frame, because that would
                     // interfere with pass-through of stack arguments.
-                    IMP::Guest(guest_imp) => guest_imp.call_without_pushing_stack_frame(env),
+                    IMP::Guest(guest_imp) => {
+                        guest_imp.call_without_pushing_stack_frame(env)
+                    }
                 }
                 return;
             } else {

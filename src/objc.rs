@@ -91,6 +91,12 @@ pub struct ObjC {
     /// Mutexes for running the +initialize function.
     initializer_threads: HashMap<id, ThreadInitializer>,
 
+    /// Pointer values of the dummy classes exported for block literals
+    /// (`__NSConcreteStackBlock` and `__NSConcreteGlobalBlock`). Guest block
+    /// literals use these as their `isa`, and must be messaged specially
+    /// (see `objc_msgSend_inner`) rather than via normal class lookup.
+    block_dummy_classes: Vec<u32>,
+
     /// Temporary storage for optional type information when sending a message.
     /// Type information isn't part of the `objc_msgSend` ABI, so an alternative
     /// channel is needed.
@@ -106,6 +112,7 @@ impl ObjC {
             classes: HashMap::new(),
             sync_mutexes: HashMap::new(),
             initializer_threads: HashMap::new(),
+            block_dummy_classes: Vec::new(),
             message_type_info: None,
         }
     }
@@ -121,9 +128,17 @@ pub const DYLIB: HostDylib = HostDylib {
 
 fn get_dummy_object(env: &mut Environment) -> ConstVoidPtr {
     // A dummy non-null pointer for things that need *some* object to exist
-    // (e.g. C++ exception typeinfo, block classes) but where we don't
+    // (e.g. C++ exception typeinfo) but where we don't
     // (yet) implement the real thing.
     env.mem.alloc_and_write(0u32).cast().cast_const()
+}
+
+/// Like `get_dummy_object`, but also records the pointer as a block dummy
+/// class so the message dispatcher can recognize block literals.
+fn get_block_dummy_class(env: &mut Environment) -> ConstVoidPtr {
+    let ptr = env.mem.alloc_and_write(0u32).cast().cast_const();
+    env.objc.block_dummy_classes.push(ptr.to_bits());
+    ptr
 }
 
 const CONSTANTS: ConstantExports = &[
@@ -134,11 +149,11 @@ const CONSTANTS: ConstantExports = &[
     ("__objc_empty_cache", HostConstant::NullPtr),
     (
         "__NSConcreteStackBlock",
-        HostConstant::Custom(get_dummy_object),
+        HostConstant::Custom(get_block_dummy_class),
     ),
     (
         "__NSConcreteGlobalBlock",
-        HostConstant::Custom(get_dummy_object),
+        HostConstant::Custom(get_block_dummy_class),
     ),
     ("_OBJC_EHTYPE_id", HostConstant::Custom(get_dummy_object)),
     (
