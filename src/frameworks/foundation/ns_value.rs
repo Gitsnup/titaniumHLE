@@ -445,20 +445,6 @@ pub const CLASSES: ClassExports = objc_classes! {
         NSNumberHostObject::UnsignedShort(_) => b"S\0",
     };
     env.mem.alloc_and_write_cstr(type_code).cast_const()
-}- (ConstPtr<u8>)objCType {
-    let type_code: &[u8] = match env.objc.borrow::<NSNumberHostObject>(this) {
-        NSNumberHostObject::Bool(_) => b"c", // BOOL is stored as a char
-        NSNumberHostObject::Char(_) => b"c",
-        NSNumberHostObject::Int(_) => b"i",
-        NSNumberHostObject::Double(_) => b"d",
-        NSNumberHostObject::Float(_) => b"f",
-        NSNumberHostObject::LongLong(_) => b"q",
-        NSNumberHostObject::Short(_) => b"s",
-        NSNumberHostObject::UnsignedInt(_) => b"I",
-        NSNumberHostObject::UnsignedLongLong(_) => b"Q",
-        NSNumberHostObject::UnsignedShort(_) => b"S",
-    };
-    env.mem.alloc_and_write_cstr(type_code).cast_const()
 }
 
 - (id)description {
