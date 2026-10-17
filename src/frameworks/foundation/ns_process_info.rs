@@ -53,6 +53,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (u64)physicalMemory {
     assert_process_info_singleton(env, this); // TODO
     PHYSICAL_MEMORY.into()
+}- (id)operatingSystemVersionString {
+    assert_process_info_singleton(env, this); // TODO
+    // Pretend to be iPhone OS 3.1.3, the last release that supports the
+    // devices this app targets.
+    ns_string::from_rust_string(env, String::from("iPhone OS 3.1.3 (7E18)"))
 }
 
 - (id)processName {

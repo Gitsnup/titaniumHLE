@@ -1386,6 +1386,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+- (id)initWithBytesNoCopy:(ConstPtr<u8>)bytes
+                   length:(NSUInteger)len
+                 encoding:(NSStringEncoding)encoding
+             freeWhenDone:(bool)_free_when_done {
+    // TODO: support adopting the buffer without copying (and freeing it).
+    log_once!(
+        "NSString initWithBytesNoCopy:length:encoding:freeWhenDone: copies the bytes; not adopted"
+    );
+    msg![env; this initWithBytes:bytes length:len encoding:encoding]
+}
+
 - (id)initWithCharacters:(ConstPtr<unichar>)characters length:(NSUInteger)len {
     assert!(!characters.is_null());
     let num_bytes = len * 2;
@@ -1592,6 +1603,29 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithCapacity:(NSUInteger)_capacity {
     // TODO: capacity
     msg![env; this init]
+}
+- (id)initWithCoder:(id)coder {
+    // Same implementation as on _touchHLE_NSString: the decoded string is
+    // returned as-is.
+    let class: Class = msg![env; coder class];
+    let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
+    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let new_str = if env.objc.class_is_subclass_of(class, keyed_unarch_class) {
+        ns_keyed_unarchiver::decode_current_string(env, coder)
+    } else if env.objc.class_is_subclass_of(class, nib_archive_class) {
+        _nib_archive_decoder::decode_current_string(env, coder)
+    } else {
+        unimplemented!();
+    };
+    release(env, this);
+    new_str
+}
+
+- (())encodeWithCoder:(id)coder {
+    // Same implementation as on _touchHLE_NSString.
+    let string = to_rust_string(env, this);
+
+    set_value_to_encode_for_current_key(env, coder, plist::Value::String(string.to_string()));
 }
 
 - (id)initWithBytes:(ConstPtr<u8>)bytes

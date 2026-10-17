@@ -12,6 +12,8 @@ use crate::frameworks::core_foundation::CFTypeRef;
 use crate::libc::sys::socket::sockaddr;
 use crate::mem::{ConstPtr, MutPtr, MutVoidPtr, Ptr};
 use crate::objc::{msg, objc_classes, Class, ClassExports, HostObject};
+use crate::frameworks::core_foundation::cf_run_loop::CFRunLoopRef;
+use crate::frameworks::core_foundation::cf_string::CFStringRef;
 use crate::Environment;
 use std::net::SocketAddrV4;
 
@@ -165,9 +167,41 @@ fn SCNetworkReachabilitySetCallback(
     false
 }
 
+fn SCNetworkReachabilityScheduleWithRunLoop(
+    env: &mut Environment,
+    target: SCNetworkReachabilityRef,
+    _run_loop: CFRunLoopRef,
+    _run_loop_mode: CFStringRef,
+) -> bool {
+    log!(
+        "TODO: SCNetworkReachabilityScheduleWithRunLoop({:?}, {:?}, {:?}) -> false",
+        target,
+        _run_loop,
+        _run_loop_mode
+    );
+    false
+}
+
+fn SCNetworkReachabilityUnscheduleFromRunLoop(
+    env: &mut Environment,
+    target: SCNetworkReachabilityRef,
+    _run_loop: CFRunLoopRef,
+    _run_loop_mode: CFStringRef,
+) -> bool {
+    log!(
+        "TODO: SCNetworkReachabilityUnscheduleFromRunLoop({:?}, {:?}, {:?}) -> false",
+        target,
+        _run_loop,
+        _run_loop_mode
+    );
+    false
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(SCNetworkReachabilityCreateWithName(_, _)),
     export_c_func!(SCNetworkReachabilityCreateWithAddress(_, _)),
     export_c_func!(SCNetworkReachabilityGetFlags(_, _)),
     export_c_func!(SCNetworkReachabilitySetCallback(_, _, _)),
+    export_c_func!(SCNetworkReachabilityScheduleWithRunLoop(_, _, _)),
+    export_c_func!(SCNetworkReachabilityUnscheduleFromRunLoop(_, _, _)),
 ];
