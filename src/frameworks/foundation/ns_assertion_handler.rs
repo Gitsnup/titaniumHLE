@@ -51,7 +51,7 @@ pub const CLASSES: ClassExports = objc_classes! {
                      object:(id)object
                        file:(id)file_name
                  lineNumber:(NSInteger)line
-                description:(id)format_string, ...args {
+                description:(id)_format_string, ..._args {
     let file = ns_string::to_rust_string(env, file_name);
     log!(
         "Assertion failure in method {} {:?} ({}:{})",
@@ -67,7 +67,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())handleFailureInFunction:(id)function_name
                          file:(id)file_name
                    lineNumber:(NSInteger)line
-                  description:(id)format_string, ...args {
+                  description:(id)_format_string, ..._args {
     let file = ns_string::to_rust_string(env, file_name);
     log!(
         "Assertion failure in function {} ({}:{})",

@@ -168,7 +168,7 @@ fn SCNetworkReachabilitySetCallback(
 }
 
 fn SCNetworkReachabilityScheduleWithRunLoop(
-    env: &mut Environment,
+    _env: &mut Environment,
     target: SCNetworkReachabilityRef,
     _run_loop: CFRunLoopRef,
     _run_loop_mode: CFStringRef,
@@ -183,7 +183,7 @@ fn SCNetworkReachabilityScheduleWithRunLoop(
 }
 
 fn SCNetworkReachabilityUnscheduleFromRunLoop(
-    env: &mut Environment,
+    _env: &mut Environment,
     target: SCNetworkReachabilityRef,
     _run_loop: CFRunLoopRef,
     _run_loop_mode: CFStringRef,
