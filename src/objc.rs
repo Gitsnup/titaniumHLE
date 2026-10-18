@@ -106,7 +106,7 @@ impl ObjC {
 pub const DYLIB: HostDylib = HostDylib {
     path: "/usr/lib/libobjc.A.dylib",
     aliases: &["/usr/lib/libobjc.dylib"],
-    class_exports: &[],
+    class_exports: &[ns_block::CLASSES],
     constant_exports: &[CONSTANTS],
     function_exports: &[FUNCTIONS],
 };
@@ -117,6 +117,21 @@ const CONSTANTS: ConstantExports = &[
     // and avoids a linker error for the integration tests.
     ("__objc_empty_vtable", HostConstant::NullPtr),
     ("__objc_empty_cache", HostConstant::NullPtr),
+    // The `isa` field of a compiled Blocks literal points at one of these.
+    // Routing them to the NSBlock class lets guest code send ordinary
+    // Objective-C messages (retain/release/copy/…) to block pointers.
+    (
+        "__NSConcreteGlobalBlock",
+        HostConstant::Custom(ns_block::concrete_block_class),
+    ),
+    (
+        "__NSConcreteStackBlock",
+        HostConstant::Custom(ns_block::concrete_block_class),
+    ),
+    (
+        "__NSConcreteMallocBlock",
+        HostConstant::Custom(ns_block::concrete_block_class),
+    ),
 ];
 
 /// Block support is iOS 4+, but it seems like Block Runtime Helpers
@@ -127,10 +142,26 @@ fn _Block_object_dispose(_env: &mut Environment, object: ConstVoidPtr, flags: i3
     // `BLOCK_FIELD_IS_BYREF` flag defines an on stack structure holding
     // the __block variable. It is _probably_ safe to ignore.
     // TODO: properly implement for block support
-    assert!(flags == 8); // BLOCK_FIELD_IS_BYREF
     log!(
-        "Warning: Ignoring _Block_object_dispose({:?}, BLOCK_FIELD_IS_BYREF)",
-        object
+        "Warning: Ignoring _Block_object_dispose({:?}, flags: {})",
+        object,
+        flags
+    );
+}
+
+fn _Block_object_assign(
+    _env: &mut Environment,
+    _dest: crate::mem::MutVoidPtr,
+    object: ConstVoidPtr,
+    flags: i32,
+) {
+    // This copies/retains a captured object into a block's byref/copy field.
+    // Ignoring it is safe for guest code that only captures trivial data.
+    // TODO: properly implement for block support
+    log!(
+        "Warning: Ignoring _Block_object_assign({:?}, flags: {})",
+        object,
+        flags
     );
 }
 
@@ -152,4 +183,6 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(object_getClass(_)),
     export_c_func!(sel_registerName(_)),
     export_c_func!(_Block_object_dispose(_, _)),
+    export_c_func!(_Block_object_assign(_, _, _)),
 ];
+mod ns_block;

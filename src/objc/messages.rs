@@ -192,7 +192,15 @@ fn objc_msgSend_inner(
     }
 
     let orig_class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
-    assert!(orig_class != nil);
+    if orig_class == nil {
+        log!(
+            "Warning: message to object with nil isa: receiver {:?} ({})",
+            receiver,
+            selector.as_str(&env.mem),
+        );
+        env.cpu.regs_mut()[0..2].fill(0);
+        return;
+    }
     if !skip_initialize {
         maybe_initialize_class(env, receiver);
     }
