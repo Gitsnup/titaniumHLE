@@ -1084,6 +1084,15 @@ fn shutdown(env: &mut Environment, socket: i32, how: i32) -> i32 {
     close(env, socket)
 }
 
+/// Stub for `if_nametoindex`: some apps call it when initializing their
+/// networking stack (e.g. via libcurl/CFNetwork internals). Returning 0 means
+/// "no such interface", which callers tolerate.
+fn if_nametoindex(env: &mut Environment, ifname: ConstPtr<u8>) -> u32 {
+    let name = env.mem.cstr_at_utf8(ifname).unwrap_or("?");
+    log_dbg!("if_nametoindex({}) => 0 (stub)", name);
+    0
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(socket(_, _, _)),
     export_c_func!(ioctl(_, _, _)),
@@ -1099,6 +1108,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(recvfrom(_, _, _, _, _, _)),
     export_c_func!(send(_, _, _, _)),
     export_c_func!(sendto(_, _, _, _, _, _)),
+    export_c_func!(if_nametoindex(_)),
     export_c_func!(shutdown(_, _)),
 ];
 

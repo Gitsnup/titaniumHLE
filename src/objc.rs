@@ -45,7 +45,8 @@ pub use objects::{
 pub use properties::todo_objc_setter;
 pub use selectors::{selector, SEL};
 
-use crate::mem::{ConstVoidPtr, MutVoidPtr};
+use crate::abi::{CallFromHost, GuestFunction};
+use crate::mem::{ConstPtr, ConstVoidPtr, MutPtr, MutVoidPtr, Ptr};
 use crate::Environment;
 use classes::{
     class_addMethod, class_getInstanceMethod, class_getInstanceSize, class_getMethodImplementation,
@@ -170,6 +171,71 @@ const CONSTANTS: ConstantExports = &[
 /// pre-ARC compiled code).
 fn objc_retain(env: &mut Environment, object: id) -> id {
     retain(env, object)
+}/// Flag in a block literal's `flags` field indicating that the block has
+/// copy/dispose helper functions in its descriptor.
+/// See <https://clang.llvm.org/docs/Block-ABI-Apple.html>
+const BLOCK_HAS_COPY_DISPOSE: u32 = 1 << 25;
+const BLOCK_NEEDS_FREE: u32 = 1 << 24;
+
+/// Retains (copies) a block literal and returns it.
+///
+/// Guest block literals are represented as ordinary objects with a dummy
+/// class. A real `_Block_copy` heap-copies the literal and runs its copy
+/// helper, which retains the captured objects via `_Block_object_assign`.
+/// Skipping the copy helper means captured objects are never retained, so
+/// they can be deallocated while the (now heap) block still references them
+/// — observed as a use-after-free crash inside the Kiip SDK. To preserve
+/// that semantic we run the guest's copy helper (with `dst == src`, so it
+/// retains the captures in place) and then retain the literal itself.
+fn objc_retainBlock(env: &mut Environment, block: id) -> id {
+    if block == nil {
+        return nil;
+    }
+    let base: u32 = block.to_bits();
+    let flags_ptr: ConstPtr<u32> = Ptr::from_bits(base + 4);
+    let flags: u32 = env.mem.read(flags_ptr);
+    log!("DBG retainBlock: block {:?} flags {:#x}", block, flags);
+    if (flags & BLOCK_HAS_COPY_DISPOSE) != 0 && (flags & BLOCK_NEEDS_FREE) == 0 {
+        let desc_ptr: ConstPtr<u32> = Ptr::from_bits(base + 16);
+        let descriptor: MutPtr<u32> = Ptr::from_bits(env.mem.read(desc_ptr));
+        let copy_helper_addr: u32 = env.mem.read(descriptor + 2);
+        if copy_helper_addr != 0 {
+            log!("DBG retainBlock: running copy helper {:#x} for {:?}", copy_helper_addr, block);
+            let copy_helper =
+                GuestFunction::from_addr_and_thumb_flag(copy_helper_addr & !0x1, true);
+            let dst: MutVoidPtr = Ptr::from_bits(base);
+            let () = copy_helper.call_from_host(env, (dst, dst));
+        }
+    }
+    retain(env, block)
+}
+
+/// Assigns a block capture. Called by the guest's block copy helper for each
+/// captured variable when a block is copied.
+/// See <https://clang.llvm.org/docs/Block-ABI-Apple.html#runtime-helper-functions>
+fn _Block_object_assign(env: &mut Environment, dest: MutVoidPtr, src: ConstVoidPtr, flags: i32) {
+    const BLOCK_FIELD_IS_OBJECT: i32 = 0;
+    const BLOCK_FIELD_IS_BLOCK: i32 = 1;
+    const BLOCK_FIELD_IS_BYREF: i32 = 8;
+
+    log!("DBG Block_object_assign: dest {:?} src {:?} flags {}", dest, src, flags);
+    let dest: crate::mem::MutPtr<id> = Ptr::from_bits(dest.to_bits());
+    if flags == BLOCK_FIELD_IS_OBJECT || flags == BLOCK_FIELD_IS_BLOCK {
+        let object: id = Ptr::from_bits(src.to_bits());
+        let retained: id = retain(env, object);
+        env.mem.write(dest, retained);
+    } else if flags == BLOCK_FIELD_IS_BYREF {
+        // We don't model byref copies (see _Block_object_dispose), so just
+        // pass the pointer through unmodified.
+        let ptr: u32 = src.to_bits();
+        env.mem.write(dest.cast(), ptr);
+    } else {
+        log!(
+            "Warning: unimplemented _Block_object_assign flags {flags}",
+        );
+        let ptr: u32 = src.to_bits();
+        env.mem.write(dest.cast(), ptr);
+    }
 }
 
 fn objc_retainAutoreleasedReturnValue(env: &mut Environment, object: id) -> id {
@@ -187,9 +253,28 @@ fn objc_autorelease(env: &mut Environment, object: id) -> id {
 fn objc_autoreleaseReturnValue(env: &mut Environment, object: id) -> id {
     autorelease(env, object)
 }
+fn objc_retainAutorelease(env: &mut Environment, object: id) -> id {
+    let object = retain(env, object);
+    autorelease(env, object)
+}
+
 fn objc_retainAutoreleaseReturnValue(env: &mut Environment, object: id) -> id {
     let object = retain(env, object);
     autorelease(env, object)
+}
+
+/// ARC helper: `*object = value` with proper retain/release semantics.
+/// See objc4's objc_storeStrong.
+fn objc_storeStrong(env: &mut Environment, object: MutPtr<id>, value: id) {
+    let old: id = env.mem.read(object);
+    if value == old {
+        return;
+    }
+    let new: id = if value != nil { retain(env, value) } else { nil };
+    env.mem.write(object, new);
+    if old != nil {
+        release(env, old);
+    }
 }
 
 fn _Block_object_dispose(_env: &mut Environment, object: ConstVoidPtr, flags: i32) {
@@ -221,12 +306,17 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_setProperty(_, _, _, _, _, _)),
     export_c_func!(objc_copyStruct(_, _, _, _, _)),
     export_c_func!(objc_retain(_)),
+    export_c_func!(objc_retainBlock(_)),
+    export_c_func_aliased!("_Block_copy", objc_retainBlock(_)),
+    export_c_func!(_Block_object_assign(_, _, _)),
     export_c_func!(objc_retainAutoreleasedReturnValue(_)),
+    export_c_func!(objc_retainAutorelease(_)),
     export_c_func!(objc_release(_)),
     export_c_func!(objc_autorelease(_)),
     export_c_func!(objc_autoreleaseReturnValue(_)),
     export_c_func!(objc_retainAutoreleaseReturnValue(_)),
     export_c_func!(objc_sync_enter(_)),
+    export_c_func!(objc_storeStrong(_, _)),
     export_c_func!(objc_sync_exit(_)),
     export_c_func!(NSAllocateObject(_, _, _)),
     export_c_func!(object_getClass(_)),

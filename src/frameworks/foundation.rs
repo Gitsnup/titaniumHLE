@@ -49,6 +49,7 @@ pub mod ns_null;
 pub mod ns_objc_runtime;
 pub mod ns_object;
 pub mod ns_operation_queue;
+pub mod ns_output_stream;
 pub mod ns_process_info;
 pub mod ns_property_list_serialization;
 pub mod ns_run_loop;
@@ -101,6 +102,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ns_null::CLASSES,
         ns_method_signature::CLASSES,
         ns_object::CLASSES,
+        ns_output_stream::CLASSES,
         ns_operation_queue::CLASSES,
         ns_process_info::CLASSES,
         ns_property_list_serialization::CLASSES,

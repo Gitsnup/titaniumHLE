@@ -74,7 +74,7 @@ fn dispatch_after(
     queue: dispatch_queue_t,
     block: MutVoidPtr,
 ) {
-    let _ = (queue, when);
+    let _ = queue;
     // FIXME: Arbitrarily maps to the main queue since concurrent queues are
     // not implemented.
     if when == DISPATCH_TIME_FOREVER {
@@ -82,11 +82,38 @@ fn dispatch_after(
     }
     // Simulate "after a delay" as "as soon as possible" on the main loop,
     // which matches how touchHLE treats other async work today.
-    dispatch_once(env, MutPtr::null(), block)
+    //
+    // dispatch_once() returns early on a null predicate, so invoke the block
+    // directly here instead.
+    let block_flags: u32 = env.mem.read(block.cast::<u32>() + 1);
+    const BLOCK_HAS_STRET: u32 = 0x20000000;
+    assert!(block_flags & BLOCK_HAS_STRET == 0);
+    let invoke: GuestFunction = env.mem.read(block.cast::<GuestFunction>() + 3);
+    let (): () = invoke.call_from_host(env, (block,));
+}
+
+/// Decrements the reference count of a dispatch object.
+///
+/// We do not track dispatch-object refcounts in the HLE layer, so this is a
+/// no-op (matching how the upstream touchHLE project treats it).
+fn dispatch_release(_env: &mut Environment, object: MutVoidPtr) {
+    log_dbg!(
+        "dispatch_release({:?}) -> no-op (refcounts not tracked)",
+        object
+    );
+}
+
+/// Increments the reference count of a dispatch object. No-op, see
+/// [dispatch_release].
+fn dispatch_retain(_env: &mut Environment, object: MutVoidPtr) -> MutVoidPtr {
+    log_dbg!("dispatch_retain({:?}) -> no-op", object);
+    object
 }
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(dispatch_once(_, _)),
     export_c_func!(dispatch_time(_, _, _)),
     export_c_func!(dispatch_after(_, _, _)),
+    export_c_func!(dispatch_release(_)),
+    export_c_func!(dispatch_retain(_)),
 ];

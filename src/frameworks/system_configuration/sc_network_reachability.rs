@@ -183,8 +183,29 @@ fn SCNetworkReachabilityUnscheduleFromRunLoop(
     true
 }
 
+fn SCNetworkReachabilitySetDispatchQueue(
+    env: &mut Environment,
+    target: SCNetworkReachabilityRef,
+    _queue: CFTypeRef, // dispatch_queue_t
+) -> bool {
+    // No-op: we don't deliver reachability change notifications anyway.
+    let target_class: Class = msg![env; target class];
+    assert_eq!(
+        target_class,
+        env.objc
+            .get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem)
+    );
+    log_dbg!(
+        "TODO: SCNetworkReachabilitySetDispatchQueue({:?}, {:?}) -> true",
+        target,
+        _queue
+    );
+    true
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(SCNetworkReachabilityCreateWithName(_, _)),
+    export_c_func!(SCNetworkReachabilitySetDispatchQueue(_, _)),
     export_c_func!(SCNetworkReachabilityCreateWithAddress(_, _)),
     export_c_func!(SCNetworkReachabilityGetFlags(_, _)),
     export_c_func!(SCNetworkReachabilitySetCallback(_, _, _)),

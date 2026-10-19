@@ -313,7 +313,15 @@ pub fn init_with_objects_and_keys(
 
 /// Helper function to share `initWithDictionary:` implementations
 fn init_with_dictionary_common(env: &mut Environment, this: id, other_dict: id) -> id {
-    let other_host_object: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(other_dict));
+    let other_host_object: DictionaryHostObject = if other_dict == nil {
+        // Some apps pass a dictionary obtained from a method we fake (e.g. an
+        // analytics SDK stub), which can be nil where the real SDK would have
+        // returned something. Copying a nil dictionary yields an empty
+        // dictionary rather than crashing.
+        <DictionaryHostObject as Default>::default()
+    } else {
+        std::mem::take(env.objc.borrow_mut(other_dict))
+    };
 
     let mut host_object = <DictionaryHostObject as Default>::default();
 
@@ -323,7 +331,9 @@ fn init_with_dictionary_common(env: &mut Environment, this: id, other_dict: id) 
     }
 
     *env.objc.borrow_mut(this) = host_object;
-    *env.objc.borrow_mut(other_dict) = other_host_object;
+    if other_dict != nil {
+        *env.objc.borrow_mut(other_dict) = other_host_object;
+    }
     this
 }
 

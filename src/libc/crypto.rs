@@ -58,15 +58,21 @@ fn CC_MD5_Final(env: &mut Environment, md: MutPtr<u8>, ctx: MutPtr<CC_MD5_CTX>) 
 
 fn CC_MD5(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -> MutPtr<u8> {
     let mut hasher = Md5::new();
-    hasher.update(env.mem.bytes_at(data.cast(), len));
+    if data != ConstVoidPtr::null() && len != 0 {
+        hasher.update(env.mem.bytes_at(data.cast(), len));
+    }
     let digest = hasher.finalize();
-    env.mem.bytes_at_mut(md, 16).copy_from_slice(&digest[..]);
+    if md != MutPtr::null() {
+        env.mem.bytes_at_mut(md, 16).copy_from_slice(&digest[..]);
+    }
     md
 }
 
 fn CC_SHA1(env: &mut Environment, data: ConstVoidPtr, len: u32, md: MutPtr<u8>) -> MutPtr<u8> {
     let mut hasher = Sha1::new();
-    hasher.update(env.mem.bytes_at(data.cast(), len));
+    if data != ConstVoidPtr::null() && len != 0 {
+        hasher.update(env.mem.bytes_at(data.cast(), len));
+    }
     let digest = hasher.finalize();
     env.mem.bytes_at_mut(md, 20).copy_from_slice(&digest[..]);
     md
