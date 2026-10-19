@@ -65,6 +65,12 @@ const touchHLE_kCATransactionAnimationDidStopSelector: &str =
 
 type UIViewAnimationCurve = NSInteger;
 const UIViewAnimationCurveEaseInOut: UIViewAnimationCurve = 0;
+type UIViewAnimationTransition = NSInteger;
+const UIViewAnimationTransitionNone: UIViewAnimationTransition = 0;
+const UIViewAnimationTransitionFlipFromLeft: UIViewAnimationTransition = 1;
+const UIViewAnimationTransitionFlipFromRight: UIViewAnimationTransition = 2;
+const UIViewAnimationTransitionCurlUp: UIViewAnimationTransition = 3;
+const UIViewAnimationTransitionCurlDown: UIViewAnimationTransition = 4;
 const UIViewAnimationCurveEaseIn: UIViewAnimationCurve = 1;
 const UIViewAnimationCurveEaseOut: UIViewAnimationCurve = 2;
 const UIViewAnimationCurveLinear: UIViewAnimationCurve = 3;
@@ -292,6 +298,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (())setAnimationDuration:(NSTimeInterval)duration {
     log_dbg!("[UIView setAnimationDuration:{:?}]", duration);
     () = msg_class![env; CATransaction setAnimationDuration:duration];
+}
+
++ (())setAnimationTransition:(UIViewAnimationTransition)transition
+              forView:(id)view // UIView*
+                cache:(bool)cache {
+    // The transition is only a visual effect; the actual view hierarchy swap
+    // is done manually by the app between beginAnimations: and
+    // commitAnimations:, so a no-op here is enough for correct behavior.
+    log_dbg!(
+        "[UIView setAnimationTransition:{:?} forView:{:?} cache:{:?}] (no-op)",
+        transition, view, cache
+    );
 }
 + (())setAnimationBeginsFromCurrentState:(bool)begins_from_current_state {
     log_dbg!("[UIView setAnimationBeginsFromCurrentState:{:?}] (unimplemented)", begins_from_current_state);
@@ -677,20 +695,55 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg![env; this_layer insertSublayer:subview_layer atIndex:(index as u32)];
 }
 
+- (())insertSubview:(id)view aboveSubview:(id)sibling {
+    if view == nil {
+        log_dbg!("Tolerating [(UIView*){:?} insertSubview:nil aboveSubview:]", this);
+        return;
+    }
+    if sibling == nil {
+        // Symmetric with belowSubview:nil: append on top.
+        log_dbg!("Tolerating [(UIView*){:?} insertSubview:{:?} aboveSubview:nil], appending", this, view);
+        () = msg![env; this addSubview:view];
+        return;
+    }
+
+    retain(env, view);
+    () = msg![env; view removeFromSuperview];
+
+    let subview_obj = env.objc.borrow_mut::<UIViewHostObject>(view);
+    subview_obj.superview = this;
+    let subview_layer = subview_obj.layer;
+
+    let sibling_layer = env.objc.borrow_mut::<UIViewHostObject>(sibling).layer;
+
+    let &mut UIViewHostObject {
+        ref mut subviews,
+        layer: this_layer,
+        ..
+    } = env.objc.borrow_mut(this);
+
+    let idx = subviews.iter().position(|&subview2| subview2 == sibling).unwrap();
+    subviews.insert(idx + 1, view);
+
+    () = msg![env; this_layer insertSublayer:subview_layer above:sibling_layer];
+}
+
 - (())insertSubview:(id)view belowSubview:(id)sibling {
     if view == nil {
         log_dbg!("Tolerating [(UIView*){:?} insertSubview:nil belowSubview:]", this);
         return;
     }
     if sibling == nil {
-        // Inserting below a nil sibling is meaningless. Be lenient and treat
-        // it like a plain append, rather than crashing the emulator.
+        // On real iOS, passing nil as the sibling inserts the view at the
+        // bottom of the z-order (a common "send to back" idiom in old apps).
+        // Treating this as a plain append would bury pre-existing subviews
+        // (e.g. nib-built controls) under the new view.
         log_dbg!(
-            "Tolerating [(UIView*){:?} insertSubview:{:?} belowSubview:nil], appending instead",
+            "Tolerating [(UIView*){:?} insertSubview:{:?} belowSubview:nil], inserting at back",
             this,
             view
         );
-        () = msg![env; this addSubview:view];
+        () = msg![env; this insertSubview:view atIndex:0];
         return;
     }
 
@@ -973,11 +1026,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     // TODO: avoid copy somehow?
     let subviews = env.objc.borrow::<UIViewHostObject>(this).subviews.clone();
+    log_dbg!("hitTest on {:?} at {:?}, subviews: {:?}", this, point, subviews);
     for subview in subviews.into_iter().rev() { // later views are on top
         let hidden: bool = msg![env; subview isHidden];
         let alpha: CGFloat = msg![env; subview alpha];
         let interactible: bool = msg![env; subview isUserInteractionEnabled];
         if hidden || alpha < 0.01 || !interactible {
+            log_dbg!("hitTest skipping subview {:?} (hidden={} alpha={} interactible={})", subview, hidden, alpha, interactible);
            continue;
         }
         let point: CGPoint = msg![env; subview convertPoint:point fromView:this];
