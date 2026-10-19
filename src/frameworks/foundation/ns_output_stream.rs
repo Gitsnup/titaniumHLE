@@ -3,11 +3,8 @@
 //! Minimal support for memory output streams, which the Kiip SDK uses to
 //! buffer request bodies. Only the memory-target variant is implemented.
 
-use crate::objc::{id, msg, msg_class, nil, objc_classes, autorelease, ClassExports, HostObject};
-use crate::mem::{ConstVoidPtr, MutPtr, MutVoidPtr, Ptr};
-
-#[derive(Default)]
-pub struct State {}
+use crate::objc::{id, msg_class, nil, objc_classes, autorelease, ClassExports, HostObject};
+use crate::mem::{ConstVoidPtr, MutVoidPtr};
 
 /// The constant for the stream property that returns the written data,
 /// exposed by NSStream as `NSStreamDataWrittenToMemoryStreamKey`.
@@ -66,8 +63,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     if key_str == NS_STREAM_DATA_WRITTEN_TO_MEMORY_STREAM_KEY {
         let buffer = env.objc.borrow_mut::<NSOutputStreamHostObject>(this).buffer.clone();
         let len = buffer.len() as u32;
-        let bytes_ptr: MutPtr<u8> = Ptr::from_bits(buffer.as_ptr() as u32);
-        let data: id = msg_class![env; NSData dataWithBytes:bytes_ptr length:len];
+        let guest_buffer = env.mem.alloc(len);
+        env.mem
+            .bytes_at_mut(guest_buffer.cast(), len)
+            .copy_from_slice(&buffer[..]);
+        let data: id = msg_class![env; NSData dataWithBytesNoCopy:guest_buffer length:len];
         data
     } else {
         nil

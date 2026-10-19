@@ -226,7 +226,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
-// TODO: more constructors, more accessors// TODO: more constructors, more accessors
+// TODO: more constructors, more accessors
 
 @end
 
