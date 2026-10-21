@@ -171,7 +171,8 @@ const CONSTANTS: ConstantExports = &[
 /// pre-ARC compiled code).
 fn objc_retain(env: &mut Environment, object: id) -> id {
     retain(env, object)
-}/// Flag in a block literal's `flags` field indicating that the block has
+}
+/// Flag in a block literal's `flags` field indicating that the block has
 /// copy/dispose helper functions in its descriptor.
 /// See <https://clang.llvm.org/docs/Block-ABI-Apple.html>
 const BLOCK_HAS_COPY_DISPOSE: u32 = 1 << 25;
@@ -194,13 +195,17 @@ fn objc_retainBlock(env: &mut Environment, block: id) -> id {
     let base: u32 = block.to_bits();
     let flags_ptr: ConstPtr<u32> = Ptr::from_bits(base + 4);
     let flags: u32 = env.mem.read(flags_ptr);
-    log!("DBG retainBlock: block {:?} flags {:#x}", block, flags);
+    log_dbg!("retainBlock: block {:?} flags {:#x}", block, flags);
     if (flags & BLOCK_HAS_COPY_DISPOSE) != 0 && (flags & BLOCK_NEEDS_FREE) == 0 {
         let desc_ptr: ConstPtr<u32> = Ptr::from_bits(base + 16);
         let descriptor: MutPtr<u32> = Ptr::from_bits(env.mem.read(desc_ptr));
         let copy_helper_addr: u32 = env.mem.read(descriptor + 2);
         if copy_helper_addr != 0 {
-            log!("DBG retainBlock: running copy helper {:#x} for {:?}", copy_helper_addr, block);
+            log_dbg!(
+                "retainBlock: running copy helper {:#x} for {:?}",
+                copy_helper_addr,
+                block
+            );
             let copy_helper =
                 GuestFunction::from_addr_and_thumb_flag(copy_helper_addr & !0x1, true);
             let dst: MutVoidPtr = Ptr::from_bits(base);
@@ -218,7 +223,12 @@ fn _Block_object_assign(env: &mut Environment, dest: MutVoidPtr, src: ConstVoidP
     const BLOCK_FIELD_IS_BLOCK: i32 = 1;
     const BLOCK_FIELD_IS_BYREF: i32 = 8;
 
-    log!("DBG Block_object_assign: dest {:?} src {:?} flags {}", dest, src, flags);
+    log_dbg!(
+        "Block_object_assign: dest {:?} src {:?} flags {}",
+        dest,
+        src,
+        flags
+    );
     let dest: crate::mem::MutPtr<id> = Ptr::from_bits(dest.to_bits());
     if flags == BLOCK_FIELD_IS_OBJECT || flags == BLOCK_FIELD_IS_BLOCK {
         let object: id = Ptr::from_bits(src.to_bits());
@@ -230,9 +240,7 @@ fn _Block_object_assign(env: &mut Environment, dest: MutVoidPtr, src: ConstVoidP
         let ptr: u32 = src.to_bits();
         env.mem.write(dest.cast(), ptr);
     } else {
-        log!(
-            "Warning: unimplemented _Block_object_assign flags {flags}",
-        );
+        log!("Warning: unimplemented _Block_object_assign flags {flags}",);
         let ptr: u32 = src.to_bits();
         env.mem.write(dest.cast(), ptr);
     }
@@ -270,7 +278,11 @@ fn objc_storeStrong(env: &mut Environment, object: MutPtr<id>, value: id) {
     if value == old {
         return;
     }
-    let new: id = if value != nil { retain(env, value) } else { nil };
+    let new: id = if value != nil {
+        retain(env, value)
+    } else {
+        nil
+    };
     env.mem.write(object, new);
     if old != nil {
         release(env, old);

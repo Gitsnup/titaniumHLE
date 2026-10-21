@@ -262,6 +262,27 @@ impl ObjC {
 
     /// Same as [Self::class_has_method], but using a named selector (rather
     /// than a pointer).
+    /// Look up the implementation of the method for [SEL] on [Class],
+    /// including inherited methods. Returns the guest-callable [IMP], or
+    /// [None] if the class does not respond to the selector.
+    pub fn class_lookup_method(&self, class: Class, sel: SEL) -> Option<IMP> {
+        let mut class = class;
+        loop {
+            let &ClassHostObject {
+                superclass,
+                ref methods,
+                ..
+            } = self.borrow(class);
+            if let Some(imp) = methods.get(&sel) {
+                return Some(imp.clone());
+            } else if superclass == nil {
+                return None;
+            } else {
+                class = superclass;
+            }
+        }
+    }
+
     pub fn class_has_method_named(&self, class: Class, sel_name: &str) -> bool {
         if let Some(sel) = self.lookup_selector(sel_name) {
             self.class_has_method(class, sel)

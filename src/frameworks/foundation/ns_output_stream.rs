@@ -3,8 +3,8 @@
 //! Minimal support for memory output streams, which the Kiip SDK uses to
 //! buffer request bodies. Only the memory-target variant is implemented.
 
-use crate::objc::{id, msg_class, nil, objc_classes, autorelease, ClassExports, HostObject};
 use crate::mem::{ConstVoidPtr, MutVoidPtr};
+use crate::objc::{autorelease, id, msg_class, nil, objc_classes, ClassExports, HostObject};
 
 /// The constant for the stream property that returns the written data,
 /// exposed by NSStream as `NSStreamDataWrittenToMemoryStreamKey`.

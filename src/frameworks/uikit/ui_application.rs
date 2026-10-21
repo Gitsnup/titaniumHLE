@@ -7,6 +7,7 @@
 
 use super::ui_device::*;
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
+use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str};
 use crate::frameworks::foundation::{ns_array, ns_string, NSInteger, NSUInteger};
 use crate::mem::MutPtr;
@@ -102,6 +103,26 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (UIApplicationState)applicationState {
     // We only support the app running in the foreground.
     0 // UIApplicationStateActive
+}
+- (CGRect)statusBarFrame {
+    // 20 points tall (or wide in landscape) if the status bar is shown; empty
+    // otherwise. The real values depend on the device, but 20 points is the
+    // classic height on all iPhone OS versions this emulator supports.
+    if !env.framework_state.uikit.ui_application.status_bar_hidden {
+        let (width, height) = match env.window().current_rotation() {
+            DeviceOrientation::LandscapeLeft | DeviceOrientation::LandscapeRight => (20.0, 0.0),
+            _ => (0.0, 20.0),
+        };
+        CGRect {
+            origin: CGPoint { x: 0.0, y: 0.0 },
+            size: CGSize { width, height },
+        }
+    } else {
+        CGRect {
+            origin: CGPoint { x: 0.0, y: 0.0 },
+            size: CGSize { width: 0.0, height: 0.0 },
+        }
+    }
 }
 - (bool)isStatusBarHidden {
     env.framework_state.uikit.ui_application.status_bar_hidden

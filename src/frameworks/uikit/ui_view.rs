@@ -66,11 +66,9 @@ const touchHLE_kCATransactionAnimationDidStopSelector: &str =
 type UIViewAnimationCurve = NSInteger;
 const UIViewAnimationCurveEaseInOut: UIViewAnimationCurve = 0;
 type UIViewAnimationTransition = NSInteger;
-const UIViewAnimationTransitionNone: UIViewAnimationTransition = 0;
-const UIViewAnimationTransitionFlipFromLeft: UIViewAnimationTransition = 1;
-const UIViewAnimationTransitionFlipFromRight: UIViewAnimationTransition = 2;
-const UIViewAnimationTransitionCurlUp: UIViewAnimationTransition = 3;
-const UIViewAnimationTransitionCurlDown: UIViewAnimationTransition = 4;
+// NOTE: the five UIViewAnimationTransition* constant values are not defined
+// as Rust constants because none of them are referenced by name; they only
+// arrive as guest values in setAnimationTransition:forView:cache:.
 const UIViewAnimationCurveEaseIn: UIViewAnimationCurve = 1;
 const UIViewAnimationCurveEaseOut: UIViewAnimationCurve = 2;
 const UIViewAnimationCurveLinear: UIViewAnimationCurve = 3;

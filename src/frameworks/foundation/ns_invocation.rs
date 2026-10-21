@@ -41,6 +41,28 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSInvocation: NSObject
 
 + (id)invocationWithMethodSignature:(id)sig { // NSMethodSignature *
+    if sig == nil {
+        // Real ObjC raises NSInvalidArgumentException here. Guests sometimes
+        // query a selector the emulator does not implement (e.g. a social
+        // feature), get nil back from `instanceMethodSignatureForSelector:`,
+        // and pass it on anyway. Return a benign no-op invocation rather than
+        // crashing on a null-page access.
+        log!(
+            "Warning: invocationWithMethodSignature: called with a nil signature; returning a no-op invocation"
+        );
+        let host_object = Box::new(NSInvocationHostObject {
+            sig: nil,
+            argument_types: Vec::new(),
+            target: nil,
+            selector: None,
+            arguments: Vec::new(),
+            arguments_retained: false,
+            retained_objects: Vec::new(),
+            copied_strings: Vec::new(),
+        });
+        let res = env.objc.alloc_object(this, host_object, &mut env.mem);
+        return autorelease(env, res);
+    }
     retain(env, sig);
     let num_of_args: NSUInteger = msg![env; sig numberOfArguments];
     let mut argument_types: Vec<String> = Vec::with_capacity(num_of_args as usize);
@@ -128,6 +150,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // 0 and 1 are reserved for `self` and `_cmd`
     // TODO: can they be set too?
+    if arguments.is_empty() {
+        // No-op invocation created from a nil signature; ignore the write.
+        log!(
+            "Warning: NSInvocation setArgument:atIndex: called on a no-op invocation; ignoring"
+        );
+        return;
+    }
     assert!(1 < idx && idx < arguments.len() as NSInteger);
 
     if let Some(prev_arg) = arguments[idx as usize] {
@@ -172,6 +201,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())invoke {
+    if env.objc.borrow::<NSInvocationHostObject>(this).sig == nil {
+        // Created from a nil signature (see invocationWithMethodSignature:);
+        // there is nothing meaningful to dispatch.
+        log!(
+            "Warning: NSInvocation invoke: called on a no-op invocation; ignoring"
+        );
+        return;
+    }
     // Safeguard: all arguments must be set (except first two)
     let arguments: &Vec<Option<MutVoidPtr>> = env.objc.borrow::<NSInvocationHostObject>(this).arguments.as_ref();
     let set_count = arguments.iter().flatten().count();

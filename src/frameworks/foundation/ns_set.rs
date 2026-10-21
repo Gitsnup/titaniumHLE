@@ -311,6 +311,18 @@ pub const CLASSES: ClassExports = objc_classes! {
     );
     old_host_obj.dict.release(env);
 }
+- (id)mutableCopyWithZone:(NSZonePtr)_zone {
+    let set: id = msg_class![env; NSMutableSet alloc];
+    let enumerator: id = msg![env; this objectEnumerator];
+    loop {
+        let next: id = msg![env; enumerator nextObject];
+        if next == nil {
+            break;
+        }
+        () = msg![env; set addObject:next];
+    }
+    set
+}
 
 - (())unionSet:(id)other { // NSSet *
     let enumerator: id = msg![env; other objectEnumerator];

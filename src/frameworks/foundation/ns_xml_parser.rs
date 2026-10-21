@@ -30,7 +30,10 @@ struct NSXMLParserHostObject {
     /// An object conforming to NSXMLParserDelegateEventAdditions category
     /// or NSXMLParserDelegate protocol (which is equivalent)
     delegate: id,
+    /// The last parse error, or nil if parsing has not failed (yet).
+    error: id,
 }
+
 impl HostObject for NSXMLParserHostObject {}
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -42,7 +45,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(NSXMLParserHostObject {
         data: nil,
-        delegate: nil,
+        delegate: nil,        error: nil,
+
     });
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
@@ -71,7 +75,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (id)delegate {
     env.objc.borrow::<NSXMLParserHostObject>(this).delegate
+}- (id)parserError {
+    env.objc.borrow::<NSXMLParserHostObject>(this).error
 }
+
+
 
 - (())setShouldResolveExternalEntities:(bool)should {
     todo_objc_setter!(this, should);

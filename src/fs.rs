@@ -36,6 +36,7 @@ use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
+use unicode_normalization::UnicodeNormalization;
 
 /// The actual location of a file outside the virtual filesystem, e.g. a host
 /// file path.
@@ -781,6 +782,22 @@ impl Fs {
         Some(node)
     }
 
+    /// Variant of [Self::lookup_node_inner] that matches path components with
+    /// Unicode normalization-insensitive comparison (NFC on both sides).
+    fn lookup_node_inner_normalized(&self, resolved_path_components: &[&str]) -> Option<&FsNode> {
+        let mut node = &self.root;
+        for component in resolved_path_components {
+            let FsNode::Directory { children, .. } = node else {
+                return None;
+            };
+            let found = children
+                .keys()
+                .find(|name| !name.is_ascii() && name.nfc().collect::<String>() == *component)?;
+            node = children.get(found)?;
+        }
+        Some(node)
+    }
+
     /// Get the node at a given path, if it exists.
     fn lookup_node(&self, path: &GuestPath) -> Option<&FsNode> {
         let resolved = resolve_path(path, Some(&self.working_directory));
@@ -792,6 +809,15 @@ impl Fs {
         // home directory instead of using NSBundle. If that lookup misses,
         // retry the same relative suffix inside the app bundle. This keeps
         // the normal cwd and sandbox behavior intact for other applications.
+        // Apps distributed as IPAs sometimes store bundle file names in a
+        // different Unicode normalization form than the app requests them by
+        // (e.g. NFD on disk vs NFC in code, or vice versa). Real iPhone OS is
+        // normalization-insensitive here, so retry the lookup with
+        // normalization-insensitive component matching before giving up.
+        if let Some(node) = self.lookup_node_inner_normalized(&resolved) {
+            return Some(node);
+        }
+
         let home = resolve_path(&self.home_directory, None);
         if resolved.starts_with(&home) && resolved.len() > home.len() {
             let suffix = &resolved[home.len()..];

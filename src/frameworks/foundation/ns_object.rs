@@ -35,6 +35,16 @@ use crate::Environment;
 fn objc_msg_send_trampoline(env: &mut Environment, receiver: id, selector: SEL) {
     objc_msgSend(env, receiver, selector)
 }
+/// Host-function wrapper for the `instanceMethodForSelector:` fallback. When
+/// a class does not implement a selector, a no-op IMP is returned instead of
+/// a null pointer so that guest code which calls the IMP without checking
+/// (as Super Jump World Plus does for CCTimer) does not crash the emulator.
+fn unimplemented_imp(env: &mut Environment, _receiver: id, selector: SEL) {
+    log!(
+        "Warning: calling IMP of unimplemented method '{}' (no-op)",
+        selector.as_str(&env.mem)
+    );
+}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -98,9 +108,36 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)instanceMethodSignatureForSelector:(SEL)sel {
     // TODO: support `host` method signatures
-    let sig = *env.objc.class_get_method_signature(this, sel).unwrap();
+    let Some(sig) = env.objc.class_get_method_signature(this, sel) else {
+        log!(
+            "Warning: instanceMethodSignatureForSelector: class {} does not respond to selector '{}'",
+            env.objc.get_class_name(this),
+            sel.as_str(&env.mem)
+        );
+        return nil;
+    };
+    let sig = *sig;
     log_dbg!("instanceMethodSignatureForSelector: '{}' -> {:?}", sel.as_str(&env.mem), env.mem.cstr_at_utf8(sig));
     msg_class![env; NSMethodSignature signatureWithObjCTypes:sig]
+}
+
++ (IMP)instanceMethodForSelector:(SEL)sel {
+    match env.objc.class_lookup_method(this, sel) {
+        Some(imp) => imp,
+        // A no-op IMP for unimplemented methods is safer than a null
+        // pointer: some games (e.g. Super Jump World Plus) call
+        // `instanceMethodForSelector:` unconditionally on selectors this
+        // emulator does not implement, and calling a null IMP would crash
+        // the emulator.
+        None => {
+            let hf: HostFunction = &(unimplemented_imp as fn(&mut Environment, id, SEL));
+            IMP::Guest(env.dyld.create_guest_function(
+                &mut env.mem,
+                "__touchHLE_NSObject_instanceMethodForSelector",
+                hf,
+            ))
+        }
+    }
 }
 
 + (())initialize {
@@ -276,6 +313,10 @@ forUndefinedKey:(id)key { // NSString*
 
 - (bool)respondsToSelector:(SEL)selector {
     env.objc.object_has_method(&env.mem, this, selector)
+}
+
+- (id)methodSignatureForSelector:(SEL)sel {
+    msg_class![env; NSObject instanceMethodSignatureForSelector:sel]
 }
 - (IMP)methodForSelector:(SEL)_selector {
     // The proper implementation would return the address of the resolved
