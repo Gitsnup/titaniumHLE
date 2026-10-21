@@ -316,7 +316,10 @@ forUndefinedKey:(id)key { // NSString*
 }
 
 - (id)methodSignatureForSelector:(SEL)sel {
-    msg_class![env; NSObject instanceMethodSignatureForSelector:sel]
+    // Ask the receiver's own class (walking up its inheritance chain), not
+    // NSObject: guest methods are only described by their defining class.
+    let class: Class = msg![env; this class];
+    msg![env; class instanceMethodSignatureForSelector:sel]
 }
 - (IMP)methodForSelector:(SEL)_selector {
     // The proper implementation would return the address of the resolved
