@@ -5,6 +5,7 @@
  */
 //! `UIScreen`.
 
+use crate::dyld::{ConstantExports, HostConstant};
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::objc::{id, msg, msg_class, objc_classes, ClassExports, TrivialHostObject};
 
@@ -77,3 +78,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+pub const CONSTANTS: ConstantExports = &[(
+    "_UIScreenDidConnectNotification",
+    HostConstant::NSString("UIScreenDidConnectNotification"),
+)];

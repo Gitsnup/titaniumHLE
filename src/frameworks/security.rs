@@ -48,7 +48,36 @@ pub const CONSTANTS: ConstantExports = &[
         "_kSecReturnAttributes",
         HostConstant::NSString("kSecReturnAttributes"),
     ),
+    // Additional keychain constants referenced by some apps (e.g. Where's My
+    // Water). Their values are irrelevant as long as they are consistent.
     ("_kSecValueData", HostConstant::NSString("kSecValueData")),
+    ("_kSecAttrServer", HostConstant::NSString("kSecAttrServer")),
+    ("_kSecAttrType", HostConstant::NSString("kSecAttrType")),
+    (
+        "_kSecAttrSecurityDomain",
+        HostConstant::NSString("kSecAttrSecurityDomain"),
+    ),
+    (
+        "_kSecAttrAuthenticationType",
+        HostConstant::NSString("kSecAttrAuthenticationType"),
+    ),
+    (
+        "_kSecAttrAuthenticationTypeDefault",
+        HostConstant::NSString("kSecAttrAuthenticationTypeDefault"),
+    ),
+    (
+        "_kSecClassInternetPassword",
+        HostConstant::NSString("kSecClassInternetPassword"),
+    ),
+    ("_kSecMatchLimit", HostConstant::NSString("kSecMatchLimit")),
+    (
+        "_kSecMatchLimitOne",
+        HostConstant::NSString("kSecMatchLimitOne"),
+    ),
+    (
+        "_kSecReturnPersistentRef",
+        HostConstant::NSString("kSecReturnPersistentRef"),
+    ),
 ];
 
 // OSStatus values from SecBase.h

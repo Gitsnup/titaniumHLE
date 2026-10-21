@@ -10,7 +10,7 @@ use super::NSTimeInterval;
 use super::{ns_run_loop, ns_string};
 use crate::objc::{
     autorelease, id, msg, msg_class, msg_send, nil, objc_classes, release, retain, ClassExports,
-    HostObject, SEL,
+    HostObject, NSZonePtr, SEL,
 };
 use crate::Environment;
 use std::time::{Duration, Instant};
@@ -41,6 +41,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // NSTimer doesn't seem to be an abstract class?
 @implementation NSTimer: NSObject
+
+// Needed because [[NSTimer alloc] initWithFireDate:...] is valid ObjC, so the
+// host object has to exist by the time an initializer runs.
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let host_object = Box::new(NSTimerHostObject {
+        ns_interval: 0.0,
+        rust_interval: Duration::ZERO,
+        target: nil,
+        selector: SEL::null(),
+        user_info: nil,
+        repeats: false,
+        due_by: None,
+        run_loop: nil,
+        is_running_callback: false,
+    });
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
 
 + (id)timerWithTimeInterval:(NSTimeInterval)ns_interval
                      target:(id)target
@@ -95,6 +112,34 @@ pub const CLASSES: ClassExports = objc_classes! {
     let _: () = msg![env; run_loop addTimer:timer forMode:mode];
 
     timer
+}
+
+- (id)initWithFireDate:(id)fire_date
+               interval:(NSTimeInterval)ns_interval
+                 target:(id)target
+               selector:(SEL)selector
+               userInfo:(id)user_info
+                repeats:(bool)repeats {
+    // TODO: honor the fire date; start the timer after one interval, like the
+    // convenience constructors do.
+    let ns_interval = ns_interval.max(0.0001);
+    let rust_interval = Duration::from_secs_f64(ns_interval);
+
+    retain(env, target);
+    retain(env, user_info);
+
+    let host_object = env.objc.borrow_mut::<NSTimerHostObject>(this);
+    host_object.ns_interval = ns_interval;
+    host_object.rust_interval = rust_interval;
+    host_object.target = target;
+    host_object.selector = selector;
+    host_object.user_info = user_info;
+    host_object.repeats = repeats;
+    host_object.due_by = Some(Instant::now().checked_add(rust_interval).unwrap());
+    host_object.run_loop = nil;
+    host_object.is_running_callback = false;
+    log_dbg!("[NSTimer initWithFireDate:...] => {:?}", this);
+    this
 }
 
 - (())dealloc {

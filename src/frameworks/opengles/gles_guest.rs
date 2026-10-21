@@ -1243,6 +1243,84 @@ fn glGenFramebuffersOES(env: &mut Environment, n: GLsizei, framebuffers: MutPtr<
         unsafe { gles.GenFramebuffersOES(n, framebuffers) }
     })
 }
+// Apple's GLES1 headers also provide these frame-buffer-object functions
+// without the `OES` suffix, and some apps (e.g. Where's My Water) import
+// them under that spelling. They are simply aliases for the OES functions.
+fn glGenFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: MutPtr<GLuint>) {
+    glGenFramebuffersOES(env, n, framebuffers)
+}
+fn glGenRenderbuffers(env: &mut Environment, n: GLsizei, renderbuffers: MutPtr<GLuint>) {
+    glGenRenderbuffersOES(env, n, renderbuffers)
+}
+fn glIsFramebuffer(env: &mut Environment, framebuffer: GLuint) -> GLboolean {
+    glIsFramebufferOES(env, framebuffer)
+}
+fn glIsRenderbuffer(env: &mut Environment, renderbuffer: GLuint) -> GLboolean {
+    glIsRenderbufferOES(env, renderbuffer)
+}
+fn glBindFramebuffer(env: &mut Environment, target: GLenum, framebuffer: GLuint) {
+    glBindFramebufferOES(env, target, framebuffer)
+}
+fn glBindRenderbuffer(env: &mut Environment, target: GLenum, renderbuffer: GLuint) {
+    glBindRenderbufferOES(env, target, renderbuffer)
+}
+fn glDeleteRenderbuffers(env: &mut Environment, n: GLsizei, renderbuffers: ConstPtr<GLuint>) {
+    glDeleteRenderbuffersOES(env, n, renderbuffers)
+}
+fn glRenderbufferStorage(
+    env: &mut Environment,
+    target: GLenum,
+    internalformat: GLenum,
+    width: GLsizei,
+    height: GLsizei,
+) {
+    glRenderbufferStorageOES(env, target, internalformat, width, height)
+}
+fn glFramebufferRenderbuffer(
+    env: &mut Environment,
+    target: GLenum,
+    attachment: GLenum,
+    renderbuffertarget: GLenum,
+    renderbuffer: GLuint,
+) {
+    glFramebufferRenderbufferOES(env, target, attachment, renderbuffertarget, renderbuffer)
+}
+fn glFramebufferTexture2D(
+    env: &mut Environment,
+    target: GLenum,
+    attachment: GLenum,
+    textarget: GLenum,
+    texture: GLuint,
+    level: GLint,
+) {
+    glFramebufferTexture2DOES(env, target, attachment, textarget, texture, level)
+}
+fn glGetFramebufferAttachmentParameteriv(
+    env: &mut Environment,
+    target: GLenum,
+    attachment: GLenum,
+    pname: GLenum,
+    params: MutPtr<GLint>,
+) {
+    glGetFramebufferAttachmentParameterivOES(env, target, attachment, pname, params)
+}
+fn glGetRenderbufferParameteriv(
+    env: &mut Environment,
+    target: GLenum,
+    pname: GLenum,
+    params: MutPtr<GLint>,
+) {
+    glGetRenderbufferParameterivOES(env, target, pname, params)
+}
+fn glCheckFramebufferStatus(env: &mut Environment, target: GLenum) -> GLenum {
+    glCheckFramebufferStatusOES(env, target)
+}
+fn glDeleteFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: ConstPtr<GLuint>) {
+    glDeleteFramebuffersOES(env, n, framebuffers)
+}
+fn glGenerateMipmap(env: &mut Environment, target: GLenum) {
+    glGenerateMipmapOES(env, target)
+}
 fn glGenRenderbuffersOES(env: &mut Environment, n: GLsizei, renderbuffers: MutPtr<GLuint>) {
     with_ctx_and_mem(env, |gles, mem| {
         let n_usize: GuestUSize = n.try_into().unwrap();
@@ -1642,6 +1720,21 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glDeleteFramebuffersOES(_, _)),
     export_c_func!(glDeleteRenderbuffersOES(_, _)),
     export_c_func!(glGenerateMipmapOES(_)),
+    export_c_func!(glGenFramebuffers(_, _)),
+    export_c_func!(glGenRenderbuffers(_, _)),
+    export_c_func!(glIsFramebuffer(_)),
+    export_c_func!(glIsRenderbuffer(_)),
+    export_c_func!(glBindFramebuffer(_, _)),
+    export_c_func!(glBindRenderbuffer(_, _)),
+    export_c_func!(glDeleteRenderbuffers(_, _)),
+    export_c_func!(glRenderbufferStorage(_, _, _, _)),
+    export_c_func!(glFramebufferRenderbuffer(_, _, _, _)),
+    export_c_func!(glFramebufferTexture2D(_, _, _, _, _)),
+    export_c_func!(glGetFramebufferAttachmentParameteriv(_, _, _, _)),
+    export_c_func!(glGetRenderbufferParameteriv(_, _, _)),
+    export_c_func!(glCheckFramebufferStatus(_)),
+    export_c_func!(glDeleteFramebuffers(_, _)),
+    export_c_func!(glGenerateMipmap(_)),
     export_c_func!(glGetBufferParameteriv(_, _, _)),
     export_c_func!(glMapBufferOES(_, _)),
     export_c_func!(glUnmapBufferOES(_)),

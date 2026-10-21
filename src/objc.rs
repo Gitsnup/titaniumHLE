@@ -311,6 +311,10 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(method_getImplementation(_)),
     export_c_func!(method_getTypeEncoding(_)),
     export_c_func!(objc_msgSend(_, _)),
+    // On ARM, `objc_msgSend_fpret` has the same ABI as `objc_msgSend`; the
+    // separate variant only matters on x86. Some apps (e.g. Where's My Water)
+    // reference it, so provide it as an alias.
+    export_c_func_aliased!("objc_msgSend_fpret", objc_msgSend(_, _)),
     export_c_func!(objc_msgSend_stret(_, _, _)),
     export_c_func!(objc_msgSendSuper2(_, _)),
     export_c_func!(objc_getClass(_)),

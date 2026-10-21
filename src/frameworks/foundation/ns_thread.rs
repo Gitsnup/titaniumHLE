@@ -27,6 +27,8 @@ use std::time::Duration;
 pub struct State {
     is_multi_threaded: bool,
     ns_threads: HashMap<pthread_t, id>,
+    /// The `NSThread` object for the main thread (`+[NSThread mainThread]`).
+    main_thread: Option<id>,
 }
 impl State {
     fn get(env: &mut Environment) -> &mut Self {
@@ -123,6 +125,19 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (bool)isMainThread {
     env.current_thread == 0
+}
+
++ (id)mainThread {
+    // The main thread's `NSThread` is created on demand, just like
+    // `pthread_self` does for the main thread's pthread object.
+    let state = State::get(env);
+    if let Some(&thread) = state.main_thread.as_ref() {
+        return thread;
+    }
+    let ns_thread: id = msg_class![env; NSThread alloc];
+    let ns_thread: id = msg![env; ns_thread init];
+    State::get(env).main_thread = Some(ns_thread);
+    ns_thread
 }
 
 - (id)initWithTarget:(id)target

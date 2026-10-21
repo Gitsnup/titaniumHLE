@@ -5,7 +5,7 @@
  */
 //! Time things including `CFAbsoluteTime`.
 
-use crate::dyld::{export_c_func, FunctionExports};
+use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::frameworks::core_foundation::CFTypeRef;
 use crate::frameworks::foundation::NSTimeInterval;
 use crate::libc::time::{time_t, timestamp_to_calendar_date};
@@ -82,6 +82,18 @@ fn CFAbsoluteTimeGetDayOfWeek(env: &mut Environment, at: CFAbsoluteTime, tz: CFT
     assert!(tz.is_null());
     CFAbsoluteTimeGetGregorianDate(env, at, tz).day.into()
 }
+
+// `CFAbsoluteTime` is measured relative to Apple's epoch, but some apps (e.g.
+// Where's My Water) convert to a Unix timestamp by adding this offset.
+pub const CONSTANTS: ConstantExports = &[(
+    "_kCFAbsoluteTimeIntervalSince1970",
+    HostConstant::Custom(|env| {
+        env.mem
+            .alloc_and_write(SECS_FROM_UNIX_TO_APPLE_EPOCHS as f64)
+            .cast()
+            .cast_const()
+    }),
+)];
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFAbsoluteTimeGetCurrent()),
