@@ -37,6 +37,12 @@ pub enum SvcResult {
 }
 
 /// Memory and system-call interface used by the interpreter.
+use crate::bundle::Bundle;
+use crate::fs::Fs;
+use crate::mem::{Mem, Ptr};
+use mach_object::{LoadCommand, MachCommand, OFile, ThreadState, CPU_TYPE_ARM64};
+use std::io::Cursor;
+
 pub trait Backend {
     /// Read `buf.len()` bytes at `addr`. Returns false on a fault.
     fn read(&mut self, addr: u32, buf: &mut [u8]) -> bool;
@@ -835,369 +841,12 @@ fn pair_op(insn: u32, cpu: &mut Cpu, backend: &mut dyn Backend) -> Result<Option
     Ok(error)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct TestMem {
-        data: Vec<u8>,
-    }
-
-    impl TestMem {
-        fn with_code(words: &[u32]) -> TestMem {
-            let mut data = vec![0u8; 0x10000];
-            for (i, w) in words.iter().enumerate() {
-                data[i * 4..i * 4 + 4].copy_from_slice(&w.to_le_bytes());
-            }
-            TestMem { data }
-        }
-    }
-
-    impl Backend for TestMem {
-        fn read(&mut self, addr: u32, buf: &mut [u8]) -> bool {
-            let addr = addr as usize;
-            if addr + buf.len() > self.data.len() {
-                return false;
-            }
-            buf.copy_from_slice(&self.data[addr..addr + buf.len()]);
-            true
-        }
-        fn write(&mut self, addr: u32, buf: &[u8]) -> bool {
-            let addr = addr as usize;
-            if addr + buf.len() > self.data.len() {
-                return false;
-            }
-            self.data[addr..addr + buf.len()].copy_from_slice(buf);
-            true
-        }
-        fn syscall(&mut self, cpu: &mut Cpu) -> Result<SvcResult, String> {
-            match cpu.x[16] {
-                1 => Ok(SvcResult::Halt(cpu.x[0])),
-                4 => {
-                    let addr = cpu.x[1] as u32;
-                    let len = cpu.x[2] as usize;
-                    let mut s = vec![0u8; len];
-                    assert!(self.read(addr, &mut s));
-                    print!("{}", String::from_utf8_lossy(&s));
-                    Ok(SvcResult::Continue)
-                }
-                n => Err(format!("unimplemented syscall {n}")),
-            }
-        }
-    }
-
-    const EXIT: u64 = EXIT_MAGIC;
-
-    fn run_words(words: &[u32], entry: u64) -> (Result<u64, String>, Cpu) {
-        let mut cpu = Cpu::new();
-        cpu.x[30] = EXIT;
-        cpu.sp = 0x8000;
-        let mut mem = TestMem::with_code(words);
-        let result = run(&mut cpu, &mut mem, entry, Some(1000));
-        (result, cpu)
-    }
-
-    #[test]
-    fn hello_test_fixture() {
-        // mov w0, #0x12; add w0, w0, #1; ret
-        let (result, _) = run_words(&[0x52800240, 0x11000400, 0xd65f03c0], 0);
-        assert_eq!(result.unwrap(), 19);
-    }
-
-    #[test]
-    fn wide_moves() {
-        let (result, cpu) = run_words(
-            &[
-                0xd2800020, // movz x0, #1
-                0xf2a00040, // movk x0, #2, lsl #16
-                0x128000e5, // movn w5, #7
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[0], 0x20001);
-        assert_eq!(cpu.x[5], 0xffff_fff8);
-    }
-
-    #[test]
-    fn shifted_registers() {
-        let (result, cpu) = run_words(
-            &[
-                0xd2800041, // movz x1, #2
-                0xd2800062, // movz x2, #3
-                0x8b050c83, // add x3, x4, x5, lsl #3 (all zero -> 0)
-                0xd2800084, // movz x4, #4
-                0xcb850883, // sub x3, x4, x5, asr #2 -> 4
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[3], 4);
-        assert_eq!(cpu.x[1], 2);
-        assert_eq!(cpu.x[2], 3);
-    }
-    #[test]
-    fn compare_and_conditional_branch() {
-        let (result, _) = run_words(
-            &[
-                0xd2800041, // movz x1, #2
-                0xd2800062, // movz x2, #3
-                0xeb02003f, // cmp x1, x2 -> not equal
-                0x54000041, // b.ne +8 (skip the trap)
-                0xd4200000, // trap (must be skipped)
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-    }
-    #[test]
-    fn adds_sets_z_flag() {
-        let (result, _) = run_words(
-            &[
-                0xd2800041, // movz x1, #2
-                0x51000422, // sub w2, w1, #1 -> 1
-                0x71000421, // subs w1, w1, #1 -> 1
-                0x7100103f, // subs wzr, w1, #4 -> cmp w1, #4 -> lt
-                0x5400004b, // b.lt +8 (skip trap)
-                0xd4200000, // trap (must be skipped)
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-    }
-    #[test]
-    fn memory_roundtrip() {
-        let (result, cpu) = run_words(
-            &[
-                0xd2800080, // movz x0, #4
-                0xf90007e0, // str x0, [sp, #8]
-                0xd2800121, // movz x1, #9
-                0xf94007e1, // ldr x1, [sp, #8]
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[1], 4);
-    }
-    #[test]
-    fn byte_halfword_and_signed_loads() {
-        let (result, cpu) = run_words(
-            &[
-                0x52801100, // movz w0, #0x88
-                0x390003e0, // strb w0, [sp]
-                0x398003e1, // ldrsb x1, [sp]
-                0x52800162, // movz w2, #0xb (11)
-                0x790007e2, // strh w2, [sp, #2]
-                0x798007e3, // ldrsh x3, [sp, #2]
-                0xb98003e4, // ldrsw x4, [sp]
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[1], 0xffff_ffff_ffff_ff88);
-        assert_eq!(cpu.x[3], 11);
-    }
-    #[test]
-    fn stp_ldp_pre_post() {
-        let (result, cpu) = run_words(
-            &[
-                0xd2800080, // movz x0, #4
-                0xd28000a1, // movz x1, #5
-                0xa9bf7bfd, // stp x29, x30, [sp, #-16]!
-                0xa8c17bfd, // ldp x29, x30, [sp], #16
-                0xf90003e0, // str x0, [sp]
-                0xf94003e2, // ldr x2, [sp]
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.sp, 0x8000);
-        assert_eq!(cpu.x[2], 4);
-        assert_eq!(cpu.x[30], EXIT);
-    }
-    #[test]
-    fn stp_ldp_32bit() {
-        let (result, cpu) = run_words(
-            &[
-                0xd2800080, // movz x0, #4
-                0x29000fe2, // stp w2, w3, [sp]
-                0x29400fe2, // ldp w2, w3, [sp]
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[2], 0);
-        assert_eq!(cpu.x[3], 0);
-        let _ = cpu;
-    }
-    #[test]
-    fn register_offset_load_store() {
-        let (result, cpu) = run_words(
-            &[
-                0xd2800080, // movz x0, #4
-                0xf90007e0, // str x0, [sp, #8]
-                0xd2800021, // movz x1, #1
-                0xf8617be1, // ldr x1, [sp, x1, lsl #3] -> loads from sp+8
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[1], 4);
-    }
-    #[test]
-    fn syscall_write_exit() {
-        struct SysMem(TestMem);
-        impl Backend for SysMem {
-            fn read(&mut self, addr: u32, buf: &mut [u8]) -> bool {
-                self.0.read(addr, buf)
-            }
-            fn write(&mut self, addr: u32, buf: &[u8]) -> bool {
-                self.0.write(addr, buf)
-            }
-            fn syscall(&mut self, cpu: &mut Cpu) -> Result<SvcResult, String> {
-                match cpu.x[16] {
-                    4 => {
-                        let mut s = vec![0u8; cpu.x[2] as usize];
-                        assert!(self.0.read(cpu.x[1] as u32, &mut s));
-                        assert_eq!(&s, b"hi");
-                        Ok(SvcResult::Continue)
-                    }
-                    1 => Ok(SvcResult::Halt(cpu.x[0])),
-                    n => Err(format!("unimplemented syscall {n}")),
-                }
-            }
-        }
-        let mut cpu = Cpu::new();
-        cpu.x[30] = EXIT;
-        cpu.sp = 0x8000;
-        let mut mem = TestMem::with_code(&[
-            0xd2800020, // movz x0, #1 (stdout)
-            0x10000801, // adr x1, 0x100
-            0xd2800042, // movz x2, #2
-            0xd2800090, // movz x16, #4 (write)
-            0xd4001001, // svc #0x80
-            0xd28000e0, // movz x0, #7
-            0xd2800030, // movz x16, #1 (exit)
-            0xd4001001, // svc #0x80
-            0xd65f03c0, // ret (unreachable)
-        ]);
-        // adr x1, #0x100 executes at PC 4, so the buffer address is 0x104.
-        mem.data[0x104] = b'h';
-        mem.data[0x105] = b'i';
-        let result = run(&mut cpu, &mut SysMem(mem), 0, Some(100));
-        assert_eq!(result.unwrap(), 7);
-    }
-
-    #[test]
-    fn adrp_adr() {
-        let adrp = 0x90000000 | ((0xf & 3) << 29) | ((0xf >> 2) << 5) | (1 << 0);
-        let adr = 0x10000000 | ((0x10 & 3) << 29) | ((0x10 >> 2) << 5) | (2 << 0);
-        let (result, cpu) = run_words(&[adrp, adr, 0xd65f03c0], 0);
-        result.unwrap();
-        // ADRP x1, #0xf000 (page-relative to its own PC 0)
-        assert_eq!(cpu.x[1], 0xf000);
-        // ADR x2, #0x10 executes at PC 4, so x2 = 4 + 0x10 = 0x14.
-        assert_eq!(cpu.x[2], 0x14);
-    }
-    #[test]
-    fn bl_and_return() {
-        let mut cpu = Cpu::new();
-        cpu.x[28] = EXIT;
-        cpu.x[30] = EXIT;
-        cpu.sp = 0x8000;
-        let mut mem = TestMem::with_code(&[
-            0x94000003, // 0x00: bl to 0xc (sets x30 = 0x4)
-            0xaa1c03fe, // 0x04: mov x30, x28 - return lands here, restore link
-            0xd65f03c0, // 0x08: ret - halt via x30 == EXIT_MAGIC
-            0xd2800020, // 0x0c: movz x0, #1
-            0xaa1e03e2, // 0x10: mov x2, x30 - capture return address (0x4)
-            0xd65f03c0, // 0x14: ret - return to 0x4
-        ]);
-        let result = run(&mut cpu, &mut mem, 0, Some(1000));
-        result.unwrap();
-        assert_eq!(cpu.x[0], 1);
-        assert_eq!(cpu.x[2], 4);
-    }
-    #[test]
-    fn cbz_tbz() {
-        let (result, _) = run_words(
-            &[
-                0xb4000045, // cbz x5, +8 (to the ret)
-                0xd4200000, // trap (skipped because x5 == 0)
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-    }
-
-    #[test]
-    fn logical_immediates() {
-        let (result, cpu) = run_words(
-            &[
-                0x92401ce6, // and x6, x7, #0xff (x7 = 0 -> 0)
-                0xd2800107, // movz x7, #8
-                0xb27c0ce6, // orr x6, x7, #0xf0 -> 0xf8
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[6], 0xf8);
-    }
-
-    #[test]
-    fn mov_register() {
-        let (result, cpu) = run_words(
-            &[
-                0xd2800041, // movz x1, #2
-                0xaa0103e2, // mov x2, x1
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[2], 2);
-    }
-    #[test]
-    fn udiv_mul() {
-        let (result, cpu) = run_words(
-            &[
-                0xd28000e1, // movz x1, #7
-                0xd2800042, // movz x2, #2
-                0x9ac20820, // udiv x0, x1, x2 -> 3
-                0x9b027c23, // mul x3, x1, x2 -> 14
-                0xd65f03c0, // ret
-            ],
-            0,
-        );
-        result.unwrap();
-        assert_eq!(cpu.x[0], 3);
-        assert_eq!(cpu.x[3], 14);
-    }
-}
-
 // ARM64 app loading and glue code
 //
 // The 32-bit emulation pipeline (Environment etc.) can't run 64-bit
 // executables, so ARM64 apps get a much more minimal path: the executable is
 // mapped into a fresh Mem, and _main is run by the interpreter above until it
 // returns or exits.
-
-use crate::bundle::Bundle;
-use crate::fs::Fs;
-use crate::mem::{Mem, Ptr};
-use mach_object::{LoadCommand, MachCommand, OFile, ThreadState, CPU_TYPE_ARM64};
-use std::io::Cursor;
 
 /// Guest base address where ARM64 executables are mapped. ARM64 executables
 /// are normally linked at 0x100000000, which doesn't fit in the 32-bit guest
@@ -1466,4 +1115,355 @@ pub fn run_arm64_app(bundle: &Bundle, fs: &Fs) -> Result<u64, String> {
     log_dbg!("Starting ARM64 execution at PC {entry_pc:#x}");
     let mut backend = MemBackend { mem: &mut mem };
     run(&mut cpu, &mut backend, entry_pc, Some(STEP_LIMIT))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestMem {
+        data: Vec<u8>,
+    }
+
+    impl TestMem {
+        fn with_code(words: &[u32]) -> TestMem {
+            let mut data = vec![0u8; 0x10000];
+            for (i, w) in words.iter().enumerate() {
+                data[i * 4..i * 4 + 4].copy_from_slice(&w.to_le_bytes());
+            }
+            TestMem { data }
+        }
+    }
+
+    impl Backend for TestMem {
+        fn read(&mut self, addr: u32, buf: &mut [u8]) -> bool {
+            let addr = addr as usize;
+            if addr + buf.len() > self.data.len() {
+                return false;
+            }
+            buf.copy_from_slice(&self.data[addr..addr + buf.len()]);
+            true
+        }
+        fn write(&mut self, addr: u32, buf: &[u8]) -> bool {
+            let addr = addr as usize;
+            if addr + buf.len() > self.data.len() {
+                return false;
+            }
+            self.data[addr..addr + buf.len()].copy_from_slice(buf);
+            true
+        }
+        fn syscall(&mut self, cpu: &mut Cpu) -> Result<SvcResult, String> {
+            match cpu.x[16] {
+                1 => Ok(SvcResult::Halt(cpu.x[0])),
+                4 => {
+                    let addr = cpu.x[1] as u32;
+                    let len = cpu.x[2] as usize;
+                    let mut s = vec![0u8; len];
+                    assert!(self.read(addr, &mut s));
+                    print!("{}", String::from_utf8_lossy(&s));
+                    Ok(SvcResult::Continue)
+                }
+                n => Err(format!("unimplemented syscall {n}")),
+            }
+        }
+    }
+
+    const EXIT: u64 = EXIT_MAGIC;
+
+    fn run_words(words: &[u32], entry: u64) -> (Result<u64, String>, Cpu) {
+        let mut cpu = Cpu::new();
+        cpu.x[30] = EXIT;
+        cpu.sp = 0x8000;
+        let mut mem = TestMem::with_code(words);
+        let result = run(&mut cpu, &mut mem, entry, Some(1000));
+        (result, cpu)
+    }
+
+    #[test]
+    fn hello_test_fixture() {
+        // mov w0, #0x12; add w0, w0, #1; ret
+        let (result, _) = run_words(&[0x52800240, 0x11000400, 0xd65f03c0], 0);
+        assert_eq!(result.unwrap(), 19);
+    }
+
+    #[test]
+    fn wide_moves() {
+        let (result, cpu) = run_words(
+            &[
+                0xd2800020, // movz x0, #1
+                0xf2a00040, // movk x0, #2, lsl #16
+                0x128000e5, // movn w5, #7
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[0], 0x20001);
+        assert_eq!(cpu.x[5], 0xffff_fff8);
+    }
+
+    #[test]
+    fn shifted_registers() {
+        let (result, cpu) = run_words(
+            &[
+                0xd2800041, // movz x1, #2
+                0xd2800062, // movz x2, #3
+                0x8b050c83, // add x3, x4, x5, lsl #3 (all zero -> 0)
+                0xd2800084, // movz x4, #4
+                0xcb850883, // sub x3, x4, x5, asr #2 -> 4
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[3], 4);
+        assert_eq!(cpu.x[1], 2);
+        assert_eq!(cpu.x[2], 3);
+    }
+    #[test]
+    fn compare_and_conditional_branch() {
+        let (result, _) = run_words(
+            &[
+                0xd2800041, // movz x1, #2
+                0xd2800062, // movz x2, #3
+                0xeb02003f, // cmp x1, x2 -> not equal
+                0x54000041, // b.ne +8 (skip the trap)
+                0xd4200000, // trap (must be skipped)
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+    }
+    #[test]
+    fn adds_sets_z_flag() {
+        let (result, _) = run_words(
+            &[
+                0xd2800041, // movz x1, #2
+                0x51000422, // sub w2, w1, #1 -> 1
+                0x71000421, // subs w1, w1, #1 -> 1
+                0x7100103f, // subs wzr, w1, #4 -> cmp w1, #4 -> lt
+                0x5400004b, // b.lt +8 (skip trap)
+                0xd4200000, // trap (must be skipped)
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+    }
+    #[test]
+    fn memory_roundtrip() {
+        let (result, cpu) = run_words(
+            &[
+                0xd2800080, // movz x0, #4
+                0xf90007e0, // str x0, [sp, #8]
+                0xd2800121, // movz x1, #9
+                0xf94007e1, // ldr x1, [sp, #8]
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[1], 4);
+    }
+    #[test]
+    fn byte_halfword_and_signed_loads() {
+        let (result, cpu) = run_words(
+            &[
+                0x52801100, // movz w0, #0x88
+                0x390003e0, // strb w0, [sp]
+                0x398003e1, // ldrsb x1, [sp]
+                0x52800162, // movz w2, #0xb (11)
+                0x790007e2, // strh w2, [sp, #2]
+                0x798007e3, // ldrsh x3, [sp, #2]
+                0xb98003e4, // ldrsw x4, [sp]
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[1], 0xffff_ffff_ffff_ff88);
+        assert_eq!(cpu.x[3], 11);
+    }
+    #[test]
+    fn stp_ldp_pre_post() {
+        let (result, cpu) = run_words(
+            &[
+                0xd2800080, // movz x0, #4
+                0xd28000a1, // movz x1, #5
+                0xa9bf7bfd, // stp x29, x30, [sp, #-16]!
+                0xa8c17bfd, // ldp x29, x30, [sp], #16
+                0xf90003e0, // str x0, [sp]
+                0xf94003e2, // ldr x2, [sp]
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.sp, 0x8000);
+        assert_eq!(cpu.x[2], 4);
+        assert_eq!(cpu.x[30], EXIT);
+    }
+    #[test]
+    fn stp_ldp_32bit() {
+        let (result, cpu) = run_words(
+            &[
+                0xd2800080, // movz x0, #4
+                0x29000fe2, // stp w2, w3, [sp]
+                0x29400fe2, // ldp w2, w3, [sp]
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[2], 0);
+        assert_eq!(cpu.x[3], 0);
+        let _ = cpu;
+    }
+    #[test]
+    fn register_offset_load_store() {
+        let (result, cpu) = run_words(
+            &[
+                0xd2800080, // movz x0, #4
+                0xf90007e0, // str x0, [sp, #8]
+                0xd2800021, // movz x1, #1
+                0xf8617be1, // ldr x1, [sp, x1, lsl #3] -> loads from sp+8
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[1], 4);
+    }
+    #[test]
+    fn syscall_write_exit() {
+        struct SysMem(TestMem);
+        impl Backend for SysMem {
+            fn read(&mut self, addr: u32, buf: &mut [u8]) -> bool {
+                self.0.read(addr, buf)
+            }
+            fn write(&mut self, addr: u32, buf: &[u8]) -> bool {
+                self.0.write(addr, buf)
+            }
+            fn syscall(&mut self, cpu: &mut Cpu) -> Result<SvcResult, String> {
+                match cpu.x[16] {
+                    4 => {
+                        let mut s = vec![0u8; cpu.x[2] as usize];
+                        assert!(self.0.read(cpu.x[1] as u32, &mut s));
+                        assert_eq!(&s, b"hi");
+                        Ok(SvcResult::Continue)
+                    }
+                    1 => Ok(SvcResult::Halt(cpu.x[0])),
+                    n => Err(format!("unimplemented syscall {n}")),
+                }
+            }
+        }
+        let mut cpu = Cpu::new();
+        cpu.x[30] = EXIT;
+        cpu.sp = 0x8000;
+        let mut mem = TestMem::with_code(&[
+            0xd2800020, // movz x0, #1 (stdout)
+            0x10000801, // adr x1, 0x100
+            0xd2800042, // movz x2, #2
+            0xd2800090, // movz x16, #4 (write)
+            0xd4001001, // svc #0x80
+            0xd28000e0, // movz x0, #7
+            0xd2800030, // movz x16, #1 (exit)
+            0xd4001001, // svc #0x80
+            0xd65f03c0, // ret (unreachable)
+        ]);
+        // adr x1, #0x100 executes at PC 4, so the buffer address is 0x104.
+        mem.data[0x104] = b'h';
+        mem.data[0x105] = b'i';
+        let result = run(&mut cpu, &mut SysMem(mem), 0, Some(100));
+        assert_eq!(result.unwrap(), 7);
+    }
+
+    #[test]
+    fn adrp_adr() {
+        let adrp = 0x90000000 | ((0xf & 3) << 29) | ((0xf >> 2) << 5) | (1 << 0);
+        let adr = 0x10000000 | ((0x10 >> 2) << 5) | 2;
+        let (result, cpu) = run_words(&[adrp, adr, 0xd65f03c0], 0);
+        result.unwrap();
+        // ADRP x1, #0xf000 (page-relative to its own PC 0)
+        assert_eq!(cpu.x[1], 0xf000);
+        // ADR x2, #0x10 executes at PC 4, so x2 = 4 + 0x10 = 0x14.
+        assert_eq!(cpu.x[2], 0x14);
+    }
+    #[test]
+    fn bl_and_return() {
+        let mut cpu = Cpu::new();
+        cpu.x[28] = EXIT;
+        cpu.x[30] = EXIT;
+        cpu.sp = 0x8000;
+        let mut mem = TestMem::with_code(&[
+            0x94000003, // 0x00: bl to 0xc (sets x30 = 0x4)
+            0xaa1c03fe, // 0x04: mov x30, x28 - return lands here, restore link
+            0xd65f03c0, // 0x08: ret - halt via x30 == EXIT_MAGIC
+            0xd2800020, // 0x0c: movz x0, #1
+            0xaa1e03e2, // 0x10: mov x2, x30 - capture return address (0x4)
+            0xd65f03c0, // 0x14: ret - return to 0x4
+        ]);
+        let result = run(&mut cpu, &mut mem, 0, Some(1000));
+        result.unwrap();
+        assert_eq!(cpu.x[0], 1);
+        assert_eq!(cpu.x[2], 4);
+    }
+    #[test]
+    fn cbz_tbz() {
+        let (result, _) = run_words(
+            &[
+                0xb4000045, // cbz x5, +8 (to the ret)
+                0xd4200000, // trap (skipped because x5 == 0)
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+    }
+
+    #[test]
+    fn logical_immediates() {
+        let (result, cpu) = run_words(
+            &[
+                0x92401ce6, // and x6, x7, #0xff (x7 = 0 -> 0)
+                0xd2800107, // movz x7, #8
+                0xb27c0ce6, // orr x6, x7, #0xf0 -> 0xf8
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[6], 0xf8);
+    }
+
+    #[test]
+    fn mov_register() {
+        let (result, cpu) = run_words(
+            &[
+                0xd2800041, // movz x1, #2
+                0xaa0103e2, // mov x2, x1
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[2], 2);
+    }
+    #[test]
+    fn udiv_mul() {
+        let (result, cpu) = run_words(
+            &[
+                0xd28000e1, // movz x1, #7
+                0xd2800042, // movz x2, #2
+                0x9ac20820, // udiv x0, x1, x2 -> 3
+                0x9b027c23, // mul x3, x1, x2 -> 14
+                0xd65f03c0, // ret
+            ],
+            0,
+        );
+        result.unwrap();
+        assert_eq!(cpu.x[0], 3);
+        assert_eq!(cpu.x[3], 14);
+    }
 }

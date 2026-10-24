@@ -22,6 +22,23 @@ pub fn CFRelease(env: &mut Environment, object: CFTypeRef) {
     objc::release(env, object);
 }
 
+/// A Core Foundation type identifier, as returned by `CFGetTypeID` and
+/// friends. Type IDs are process-stable; we assign fixed IDs rather than
+/// runtime-registered ones, which is compatible with guests that only
+/// compare against values returned by the other `CF*GetTypeID` functions.
+pub type CFTypeID = u32;
+
+pub const CF_STRING_TYPE_ID: CFTypeID = 1;
+pub const CF_NUMBER_TYPE_ID: CFTypeID = 2;
+pub const CF_BOOLEAN_TYPE_ID: CFTypeID = 3;
+pub const CF_DATA_TYPE_ID: CFTypeID = 4;
+pub const CF_ARRAY_TYPE_ID: CFTypeID = 5;
+pub const CF_DICTIONARY_TYPE_ID: CFTypeID = 6;
+pub const CF_URL_TYPE_ID: CFTypeID = 7;
+/// Returned for objects of unrecognised classes; never 0, which Apple
+/// defines as an invalid type ID.
+pub const CF_UNKNOWN_TYPE_ID: CFTypeID = 0xFF;
+
 /// Legacy garbage-collection-era function. With the GC long gone this is
 /// equivalent to `CFRetain` (which is how modern CoreFoundation implements
 /// it), but guests only ever used it to satisfy an API, so returning the
@@ -52,6 +69,32 @@ pub fn CFEqual(env: &mut Environment, object1: CFTypeRef, object2: CFTypeRef) ->
 pub fn CFHash(env: &mut Environment, object: CFTypeRef) -> CFHashCode {
     msg![env; object hash]
 }
+pub fn CFGetTypeID(env: &mut Environment, cf_type: CFTypeRef) -> CFTypeID {
+    let class: Class = msg![env; cf_type class];
+    let mut is_kind_of = |name: &str| -> bool {
+        let known_class = env.objc.get_known_class(name, &mut env.mem);
+        env.objc.class_is_subclass_of(class, known_class)
+    };
+    if is_kind_of("NSString") {
+        CF_STRING_TYPE_ID
+    } else if is_kind_of("NSNumber") {
+        CF_NUMBER_TYPE_ID
+    } else if is_kind_of("NSData") {
+        CF_DATA_TYPE_ID
+    } else if is_kind_of("NSArray") {
+        CF_ARRAY_TYPE_ID
+    } else if is_kind_of("NSDictionary") {
+        CF_DICTIONARY_TYPE_ID
+    } else if is_kind_of("NSURL") {
+        CF_URL_TYPE_ID
+    } else {
+        log_dbg!(
+            "CFGetTypeID: unrecognised class {}",
+            env.objc.get_class_name(class)
+        );
+        CF_UNKNOWN_TYPE_ID
+    }
+}
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFRetain(_)),
@@ -60,4 +103,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFGetRetainCount(_)),
     export_c_func!(CFEqual(_, _)),
     export_c_func!(CFHash(_)),
+    export_c_func!(CFGetTypeID(_)),
 ];

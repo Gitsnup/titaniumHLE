@@ -161,4 +161,13 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFNumberGetValue(_, _, _)),
     export_c_func!(CFNumberCompare(_, _, _)),
     export_c_func!(CFBooleanGetValue(_)),
+    export_c_func!(CFNumberGetTypeID()),
+    export_c_func!(CFBooleanGetTypeID()),
 ];
+pub fn CFNumberGetTypeID(_env: &mut Environment) -> super::cf_type::CFTypeID {
+    super::cf_type::CF_NUMBER_TYPE_ID
+}
+
+pub fn CFBooleanGetTypeID(_env: &mut Environment) -> super::cf_type::CFTypeID {
+    super::cf_type::CF_BOOLEAN_TYPE_ID
+}

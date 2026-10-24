@@ -65,6 +65,9 @@ fn CFArrayRemoveValueAtIndex(env: &mut Environment, array: CFMutableArrayRef, id
     let idx: NSUInteger = idx.try_into().unwrap();
     msg![env; array removeObjectAtIndex:idx]
 }
+pub fn CFArrayGetTypeID(_env: &mut Environment) -> super::cf_type::CFTypeID {
+    super::cf_type::CF_ARRAY_TYPE_ID
+}
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFArrayCreateMutable(_, _, _)),
@@ -72,4 +75,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFArrayGetValueAtIndex(_, _)),
     export_c_func!(CFArrayAppendValue(_, _)),
     export_c_func!(CFArrayRemoveValueAtIndex(_, _)),
+    export_c_func!(CFArrayGetTypeID()),
 ];

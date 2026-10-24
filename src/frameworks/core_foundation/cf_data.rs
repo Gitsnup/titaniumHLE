@@ -64,6 +64,9 @@ fn CFDataGetBytes(env: &mut Environment, data: CFDataRef, range: CFRange, buffer
     };
     msg![env; data getBytes:buffer range:range]
 }
+pub fn CFDataGetTypeID(_env: &mut Environment) -> super::cf_type::CFTypeID {
+    super::cf_type::CF_DATA_TYPE_ID
+}
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFDataCreate(_, _, _)),
@@ -71,4 +74,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFDataGetLength(_)),
     export_c_func!(CFDataGetBytePtr(_)),
     export_c_func!(CFDataGetBytes(_, _, _)),
+    export_c_func!(CFDataGetTypeID()),
 ];

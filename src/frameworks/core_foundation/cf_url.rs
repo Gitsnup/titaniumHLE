@@ -243,6 +243,10 @@ fn CFURLHasDirectoryPath(env: &mut Environment, url: CFURLRef) -> bool {
         || msg![env; last isEqual:(get_static_str(env, ".."))]
 }
 
+pub fn CFURLGetTypeID(_env: &mut Environment) -> super::cf_type::CFTypeID {
+    super::cf_type::CF_URL_TYPE_ID
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFURLGetFileSystemRepresentation(_, _, _, _)),
     export_c_func!(CFURLCreateFromFileSystemRepresentation(_, _, _, _)),
@@ -255,4 +259,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFURLCreateCopyDeletingLastPathComponent(_, _)),
     export_c_func!(CFURLHasDirectoryPath(_)),
     export_c_func!(CFURLCreateStringByAddingPercentEscapes(_, _, _, _, _)),
+    export_c_func!(CFURLGetTypeID()),
 ];

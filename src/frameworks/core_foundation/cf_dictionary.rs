@@ -256,6 +256,10 @@ pub const CONSTANTS: ConstantExports = &[
     ),
 ];
 
+pub fn CFDictionaryGetTypeID(_env: &mut Environment) -> super::cf_type::CFTypeID {
+    super::cf_type::CF_DICTIONARY_TYPE_ID
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFDictionaryCreateMutable(_, _, _, _)),
     export_c_func!(CFDictionaryAddValue(_, _, _)),
@@ -265,4 +269,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFDictionaryGetValue(_, _)),
     export_c_func!(CFDictionaryGetCount(_)),
     export_c_func!(CFDictionaryGetKeysAndValues(_, _, _)),
+    export_c_func!(CFDictionaryGetTypeID()),
 ];

@@ -467,6 +467,10 @@ fn CFStringNormalize(
     assert!(str.is_ascii()); // TODO
 }
 
+pub fn CFStringGetTypeID(_env: &mut Environment) -> super::cf_type::CFTypeID {
+    super::cf_type::CF_STRING_TYPE_ID
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFStringAppend(_, _)),
     export_c_func!(CFStringAppendCharacters(_, _, _)),
@@ -477,6 +481,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFStringCreateCopy(_, _)),
     export_c_func!(CFStringCreateMutable(_, _)),
     export_c_func!(CFStringCreateMutableCopy(_, _, _)),
+    export_c_func!(CFStringGetTypeID()),
     export_c_func!(CFStringCreateWithBytes(_, _, _, _, _)),
     export_c_func!(CFStringCreateWithCString(_, _, _)),
     export_c_func!(CFStringCreateWithCStringNoCopy(_, _, _, _)),
