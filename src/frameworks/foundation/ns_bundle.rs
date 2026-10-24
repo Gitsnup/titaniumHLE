@@ -41,7 +41,9 @@ const LANG_ID_TO_LANG_PROJ: &[(&str, &[&str])] = &[
 #[derive(Default)]
 pub struct State {
     main_bundle: Option<id>,
-    localization_tables: HashMap<id, id>, // NSString* to NSDictionary*
+    /// Localization tables, keyed by (bundle URL, table name) so that
+    /// same-named tables in different bundles don't cross-contaminate.
+    localization_tables: HashMap<(id, id), id>, // (NSURL*, NSString*) to NSDictionary*
 }
 
 pub struct NSBundleHostObject {
@@ -268,9 +270,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     } else {
         table_name
     };
-    // TODO: support arbitrary bundles, not only main one
-    assert_eq!(this, env.framework_state.foundation.ns_bundle.main_bundle.unwrap());
-    let dict = if let Some(&table_dict) = env.framework_state.foundation.ns_bundle.localization_tables.get(&name) {
+    let bundle_url: id = msg![env; this bundleURL];
+    let cache_key = (bundle_url, name);
+    let dict = if let Some(&table_dict) = env.framework_state.foundation.ns_bundle.localization_tables.get(&cache_key) {
         table_dict
     } else {
         let extension = ns_string::get_static_str(env, "strings");
@@ -278,7 +280,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         if dict_url == nil {
             log!("Warning: Unable to locate localization table named '{}', caching as nil", to_rust_string(env, name));
             retain(env, name);
-            env.framework_state.foundation.ns_bundle.localization_tables.insert(name, nil);
+            retain(env, bundle_url);
+            env.framework_state.foundation.ns_bundle.localization_tables.insert(cache_key, nil);
             nil
         } else {
             let dict = {
@@ -292,8 +295,9 @@ pub const CLASSES: ClassExports = objc_classes! {
                 }
             };
             retain(env, name);
+            retain(env, bundle_url);
             retain(env, dict);
-            env.framework_state.foundation.ns_bundle.localization_tables.insert(name, dict);
+            env.framework_state.foundation.ns_bundle.localization_tables.insert(cache_key, dict);
             dict
         }
     };
