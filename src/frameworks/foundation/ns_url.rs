@@ -52,6 +52,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)fileURLWithPath:(id)path { // NSString*
+    if path == nil {
+        return nil;
+    }
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initFileURLWithPath:path];
     autorelease(env, new)
@@ -84,6 +87,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)initFileURLWithPath:(id)path // NSString*
               isDirectory:(bool)_is_dir {
+    if path == nil {
+        // The object was allocated by the caller (or by +fileURLWithPath:);
+        // mirror Apple's behavior of returning nil for an empty path.
+        env.objc.dealloc_object(this, &mut env.mem);
+        return nil;
+    }
     // FIXME: this does not resolve relative paths to be absolute!
     // TODO: this does not strip the file:/// prefix!
     assert!(!to_rust_string(env, path).starts_with("file:"));
