@@ -490,3 +490,5 @@ x; border-top: 1px solid #eeeeee;">
 - Run headless (software GL): `xvfb-run -a -s "-screen 0 640x960x24" env LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=1 ./target/release/touchHLE <game>.ipa --print-fps`.
 - `LP_NUM_THREADS=1` is required on 4GB machines (llvmpipe allocates per render thread; more threads OOM-kill the sandbox).
 - Cut the Rope: Time Travel (com.zeptolab.timetravel 1.0, iOS 4.3, GLES2) is fully playable as of commit 4d437bce: GLES2-on-GL3 fallback in src/gles.rs, stack canary consts (src/libc/stack_chk.rs), CCHmac, NSDateFormatter pattern literals, NSTimeZone GMT abbreviations, NSDecimalNumber, UIPasteboard, misc framework constants. Intro video is a no-op stub.
+
+- Plants vs. Zombies 1.0 (armv6, os221) boots and is playable as of commit 826fb2d9 (CF type-ID getters + NSBundle localization tables). Title → menu → Adventure → 1-1 gameplay, planting, sun collection all verified via xdotool taps on Xvfb. Known papercraft: null-page panic in SexyApp teardown *after* quit is requested (exit-path only).
