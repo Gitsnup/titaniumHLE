@@ -12,8 +12,9 @@
 //! - Almost all OpenGL ES 2.0 functions exist in desktop OpenGL 2.1 (via
 //!   `EXT_framebuffer_object`) with the same names and semantics.
 //! - Guest GLSL ES 1.00 shaders are preprocessed (see
-//!   the `translate_shader_source` function in `frameworks::opengles::gles2_guest`)
-//!   so that desktop GLSL accepts them.
+//!   the `translate_shader_source` function in
+//!   `frameworks::opengles::gles2_guest`) so that desktop GLSL accepts
+//!   them.
 //! - The handful of ES 2.0-specific functions that have no desktop
 //!   equivalent (`glGetShaderPrecisionFormat` etc.) are implemented in the
 //!   guest-facing wrapper (the `frameworks::opengles::gles2_guest` module).

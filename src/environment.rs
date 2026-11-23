@@ -684,15 +684,16 @@ impl Environment {
                     panic!("Main function exited unexpectedly!");
                 })
             }));
-            // The thread closure always panics, so this always errors.
-            #[allow(irrefutable_let_patterns)]
-            let Err(e) = res
-            else {
-                unreachable!();
-            };
-            let panic_cell = env.panic_cell.clone();
-            panic_cell.set(Some(env));
-            std::panic::resume_unwind(e);
+            // The closure ends in a `panic!`, so it returns `!` and `res`
+            // is `Result<!, _>`; coerce it to `Result<(), _>` so the `if`
+            // below doesn't trip the `irrefutable_let_patterns` lint.
+            let res: Result<(), _> = res;
+            if let Err(e) = res {
+                let panic_cell = env.panic_cell.clone();
+                panic_cell.set(Some(env));
+                std::panic::resume_unwind(e);
+            }
+            env
         });
         let main_thread = Thread {
             state: ThreadState::Running,
@@ -1133,15 +1134,14 @@ impl Environment {
                     curr_thread.state = ThreadState::Dead;
                 });
             }));
-            // The thread closure always panics, so this always errors.
-            #[allow(irrefutable_let_patterns)]
-            let Err(e) = res
-            else {
-                unreachable!();
-            };
-            let panic_cell = env.panic_cell.clone();
-            panic_cell.set(Some(env));
-            std::panic::resume_unwind(e);
+            // Unlike the main thread, a guest thread routine may return
+            // normally (without panicking), so `res` can be `Ok`.
+            if let Err(e) = res {
+                let panic_cell = env.panic_cell.clone();
+                panic_cell.set(Some(env));
+                std::panic::resume_unwind(e);
+            }
+            env
         });
 
         self.threads.push(Thread {
