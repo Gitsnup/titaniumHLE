@@ -58,6 +58,14 @@ jobs:
     - name: Install cargo-ndk
       run: cargo install cargo-ndk@3.5.4
     # Gradle version compatibility is a nightmare and we refuse to use gradlew.
+    # The default Java version on the runner is newer than what Gradle supports
+    # (the daemon fails at startup, with the Java version as the error message).
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+
     - name: Try to get a cached copy of Gradle
       id: cache-gradle
       uses: actions/cache@v3
