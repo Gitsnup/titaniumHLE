@@ -24,6 +24,8 @@
 //!   - [gles1_native] passes through native OpenGL ES 1.1.
 //!   - [gles1_on_gl2] provides an implementation of OpenGL ES 1.1 using OpenGL
 //!     2.1 compatibility profile.
+//!   - [gles2_on_gl2] provides an implementation of OpenGL ES 2.0 using
+//!     OpenGL 2.1 compatibility profile.
 //!   - There might be more in future.
 //! - [gles11_raw] provides raw bindings for OpenGL ES 1.1 generated from the
 //!   Khronos API headers. **The function bindings are only for use within this
@@ -65,12 +67,15 @@
 
 pub mod gles1_native;
 pub mod gles1_on_gl2;
+pub mod gles2_on_gl2;
 mod gles_generic;
 pub mod present;
 mod util;
 
-use touchHLE_gl_bindings::gl21compat as gl21compat_raw;
+pub(crate) use touchHLE_gl_bindings::gl21compat as gl21compat_raw;
 pub use touchHLE_gl_bindings::gles11 as gles11_raw;
+
+pub(crate) use gles2_on_gl2::GLES2OnGL2Context;
 
 use gles1_native::GLES1NativeContext;
 use gles1_on_gl2::GLES1OnGL2Context;
@@ -158,4 +163,27 @@ pub fn create_gles1_ctx_no_parent_stack(
         }
     }
     gles1_ctx.expect("Couldn't create OpenGL ES 1.1 context!")
+}
+
+#[allow(dead_code)]
+pub fn create_gles2_ctx(env: &mut Environment) -> Box<dyn GLESContext> {
+    env.on_parent_stack_in_coroutine(|window, _options| {
+        assert!(window.on_main_stack());
+        log!("Creating an OpenGL ES 2.0 context (GLES2-on-GL2):");
+        match GLES2OnGL2Context::new(window) {
+            Ok(ctx) => {
+                log!("=> Success!");
+                Box::new(ctx) as Box<dyn GLESContext>
+            }
+            Err(err) => {
+                panic!("Couldn't create OpenGL ES 2.0 context: {}.", err);
+            }
+        }
+    })
+}
+
+/// Load the OpenGL 3.0 bindings using `loader_fn`, which should get the
+/// address of a GL function given its name.
+pub(crate) fn load_gl30(loader_fn: &mut dyn FnMut(&'static str) -> *const std::ffi::c_void) {
+    touchHLE_gl_bindings::gl30::load_with(|s| loader_fn(s));
 }

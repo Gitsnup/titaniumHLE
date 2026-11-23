@@ -63,6 +63,7 @@ pub(super) struct CALayerHostObject {
     pub(super) gles_texture: Option<crate::gles::gles11_raw::types::GLuint>,
     /// Internal state for compositor
     pub(super) gles_texture_is_up_to_date: bool,
+    pub(super) contents_scale: CGFloat,
     pub(super) animations: HashMap<String, id>, // CAAnimation*
     pub(super) anonymous_animations: HashSet<id>, // CAAnimation*
 }
@@ -135,6 +136,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         cg_context: None,
         gles_texture: None,
         gles_texture_is_up_to_date: false,
+        contents_scale: 1.0,
         animations: HashMap::new(),
         anonymous_animations: HashSet::new(),
     });
@@ -144,6 +146,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)layer {
     let new_layer: id = msg![env; this alloc];
     msg![env; new_layer init]
+}
+
+- (())setContentsScale:(CGFloat)scale {
+    env.objc.borrow_mut::<CALayerHostObject>(this).contents_scale = scale;
+}
+
+- (CGFloat)contentsScale {
+    env.objc.borrow::<CALayerHostObject>(this).contents_scale
 }
 
 - (())dealloc {
@@ -244,9 +254,37 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (CGRect)bounds {
-    env.objc.borrow::<CALayerHostObject>(this).bounds
+    let bounds = env.objc.borrow::<CALayerHostObject>(this).bounds;
+    // Some games size their GL view oddly (Smash Hit produces a 2:7 aspect
+    // view), so make CAEAGLLayer bounds follow the guest screen instead of
+    // the (broken) view frame.
+    if env.objc.get_class(&"CAEAGLLayer", false, &mut env.mem)
+        .map_or(false, |cls| msg![env; this isKindOfClass:cls])
+    {
+        let (width, height) = env.window().device_family().portrait_size();
+        return CGRect {
+            origin: CGPoint { x: 0.0, y: 0.0 },
+            size: CGSize { width: width as f32, height: height as f32 },
+        };
+    }
+    bounds
 }
-- (())setBounds:(CGRect)bounds {
+- (())setBounds:(CGRect)new_bounds {
+    let mut bounds = new_bounds;
+    if env.objc.get_class(&"CAEAGLLayer", false, &mut env.mem)
+        .map(|ca_eagl_layer_class| crate::objc::ObjC::read_isa(this, &mut env.mem) == ca_eagl_layer_class)
+        .unwrap_or(false)
+    {
+        // This layer is an EAGL backing store. Force its bounds to the guest
+        // screen size: some games compute bizarre view sizes, which would
+        // otherwise produce weirdly-shaped GL surfaces and break the
+        // fullscreen fast path.
+        let screen: id = msg_class![env; UIScreen mainScreen];
+        let screen_bounds: CGRect = msg![env; screen bounds];
+        if bounds != screen_bounds {
+            bounds = screen_bounds;
+        }
+    }
     let host_object = env.objc.borrow_mut::<CALayerHostObject>(this);
     let old_bounds = std::mem::replace(&mut host_object.bounds, bounds);
     if is_implicit_animation_enabled(env, this) && old_bounds != bounds {

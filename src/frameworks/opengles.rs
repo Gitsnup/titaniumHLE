@@ -10,25 +10,34 @@
 //! topic.
 
 mod eagl;
+mod gles2_guest;
 mod gles_guest;
 
 use touchHLE_gl_bindings::gles11::types::GLenum;
 
 use crate::mem::ConstPtr;
 
+/// Export lists for the OpenGL ES dylib, in both possible orders. Apps that
+/// require OpenGL ES 2.0 (see [crate::dyld::GLES2_PREFERRED]) resolve shared
+/// function names (e.g. `glDrawElements`) against the ES 2.0 list first.
+pub const FUNCTION_EXPORTS_ES1_FIRST: crate::dyld::FunctionExportsList =
+    &[gles_guest::FUNCTIONS, gles2_guest::FUNCTIONS];
+pub const FUNCTION_EXPORTS_ES2_FIRST: crate::dyld::FunctionExportsList =
+    &[gles2_guest::FUNCTIONS, gles_guest::FUNCTIONS];
+
 pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     path: "/System/Library/Frameworks/OpenGLES.framework/OpenGLES",
     aliases: &[],
     class_exports: &[eagl::CLASSES],
     constant_exports: &[eagl::CONSTANTS],
-    function_exports: &[gles_guest::FUNCTIONS],
+    function_exports: FUNCTION_EXPORTS_ES1_FIRST,
 };
 
 #[derive(Default)]
 pub struct State {
     /// Current EAGLContext for each thread
     current_ctxs: std::collections::HashMap<crate::ThreadId, Option<crate::objc::id>>,
-    strings_cache: std::collections::HashMap<GLenum, ConstPtr<u8>>,
+    pub(crate) strings_cache: std::collections::HashMap<GLenum, ConstPtr<u8>>,
 }
 impl State {
     fn current_ctx_for_thread(&mut self, thread: crate::ThreadId) -> &mut Option<crate::objc::id> {

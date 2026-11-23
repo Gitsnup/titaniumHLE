@@ -59,8 +59,21 @@ const kEAGLRenderingAPIOpenGLES2: EAGLRenderingAPI = 2;
 #[allow(dead_code)]
 const kEAGLRenderingAPIOpenGLES3: EAGLRenderingAPI = 3;
 
+#[allow(non_snake_case)]
+fn create_gles2_ctx(env: &mut Environment) -> crate::gles::gles2_on_gl2::GLES2OnGL2Context {
+    let window = env
+        .window
+        .as_mut()
+        .expect("OpenGL ES is not supported in headless mode");
+    crate::gles::gles2_on_gl2::GLES2OnGL2Context::new(window)
+        .expect("Couldn't create OpenGL ES 2.0 context!")
+}
+
 pub(super) struct EAGLContextHostObject {
     pub(super) gles_ctx: Option<Box<dyn GLESContext>>,
+    /// Which rendering API this context was created with (1 = GLES 1.1,
+    /// 2 = GLES 2.0).
+    pub(super) api: EAGLRenderingAPI,
     /// Mapping of OpenGL ES renderbuffer names to `EAGLDrawable` instances
     /// (always `CAEAGLLayer*`). Retains the instance so it won't dangle.
     renderbuffer_drawable_bindings: Rc<RefCell<HashMap<GLuint, id>>>,
@@ -79,6 +92,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)alloc {
     let host_object = Box::new(EAGLContextHostObject {
         gles_ctx: None,
+        api: kEAGLRenderingAPIOpenGLES1,
         renderbuffer_drawable_bindings: Rc::new(RefCell::new(HashMap::new())),
         fps_counter: None,
         next_frame_due: None,
@@ -110,9 +124,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithAPI:(EAGLRenderingAPI)api sharegroup:(id)group {
-    if api != kEAGLRenderingAPIOpenGLES1 {
+    if api != kEAGLRenderingAPIOpenGLES1 && api != kEAGLRenderingAPIOpenGLES2 {
         log!(
-            "TODO: App requested EAGL initWithAPI:{} sharegroup:{:?}, returning nil as we only support API 1 for now",
+            "TODO: App requested EAGL initWithAPI:{} sharegroup:{:?}, returning nil as we only support APIs 1 and 2 for now",
             api,
             group
         );
@@ -135,15 +149,21 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     env.window.as_mut().unwrap().set_share_with_current_context(true);
 
-    let mut gles1_ins = create_gles1_ctx(env);
+    let mut gles_ins: Box<dyn GLESContext> = if api == kEAGLRenderingAPIOpenGLES2 {
+        Box::new(create_gles2_ctx(env))
+    } else {
+        create_gles1_ctx(env)
+    };
 
     let window = env.window.as_mut().expect("OpenGL ES is not supported in headless mode");
     {
-        let gles1_ctx = gles1_ins.make_current(window);
-        log!("Driver info: {}", unsafe { gles1_ctx.driver_description() });
+        let gles_ctx = gles_ins.make_current(window);
+        log!("Driver info: {}", unsafe { gles_ctx.driver_description() });
     }
 
-    env.objc.borrow_mut::<EAGLContextHostObject>(this).gles_ctx = Some(gles1_ins);
+    let host_obj = env.objc.borrow_mut::<EAGLContextHostObject>(this);
+    host_obj.gles_ctx = Some(gles_ins);
+    host_obj.api = api;
 
     env.window.as_mut().unwrap().set_share_with_current_context(false);
 
@@ -152,30 +172,35 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithAPI:(EAGLRenderingAPI)api {
-    if api != kEAGLRenderingAPIOpenGLES1 {
+    if api != kEAGLRenderingAPIOpenGLES1 && api != kEAGLRenderingAPIOpenGLES2 {
         log!(
-            "TODO: App requested EAGL initWithAPI:{}, returning nil as we only support API 1 for now",
+            "TODO: App requested EAGL initWithAPI:{}, returning nil as we only support APIs 1 and 2 for now",
             api
         );
         return nil;
     }
 
-    let mut gles1_ins = create_gles1_ctx(env);
+    let mut gles_ins: Box<dyn GLESContext> = if api == kEAGLRenderingAPIOpenGLES2 {
+        Box::new(create_gles2_ctx(env))
+    } else {
+        create_gles1_ctx(env)
+    };
 
     let window = env.window.as_mut().expect("OpenGL ES is not supported in headless mode");
     {
-        let gles1_ctx = gles1_ins.make_current(window);
-        log!("Driver info: {}", unsafe { gles1_ctx.driver_description() });
+        let gles_ctx = gles_ins.make_current(window);
+        log!("Driver info: {}", unsafe { gles_ctx.driver_description() });
     }
 
-    env.objc.borrow_mut::<EAGLContextHostObject>(this).gles_ctx = Some(gles1_ins);
+    let host_obj = env.objc.borrow_mut::<EAGLContextHostObject>(this);
+    host_obj.gles_ctx = Some(gles_ins);
+    host_obj.api = api;
 
     this
 }
 
 - (EAGLRenderingAPI)API {
-    // TODO: support later API versions
-    kEAGLRenderingAPIOpenGLES1
+    env.objc.borrow::<EAGLContextHostObject>(this).api
 }
 
 - (id)sharegroup {
@@ -312,7 +337,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         );
         // re-borrow
         unsafe {
-            present_renderbuffer(env);
+            present_renderbuffer(env, drawable);
         }
     } else {
         if fullscreen_layer != nil {
@@ -546,7 +571,7 @@ unsafe fn read_renderbuffer(gles: &mut dyn GLES, mut pixel_buffer: Vec<u8>) -> (
 /// (which should be provided by the app) to a texture and presents it with
 /// [present_frame], trying to avoid noticeably modifying OpenGL ES state while
 /// doing so. The front and back buffers are then swapped.
-unsafe fn present_renderbuffer(env: &mut Environment) {
+unsafe fn present_renderbuffer(env: &mut Environment, drawable: id) {
     // Save these for when we need to draw the frame
     let viewport = env.window.as_mut().unwrap().viewport();
     let rotation_matrix = env.window.as_mut().unwrap().rotation_matrix();
@@ -557,6 +582,35 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
         &mut env.objc,
         env.current_thread,
     );
+
+    // For GLES 2.0 contexts, the guest renders to the EAGL renderbuffer via
+    // the "default framebuffer" (framebuffer 0), which we emulate with an
+    // internal FBO. present_frame can only composite layers that have pixel
+    // data in RAM, so blit the emulated default framebuffer into the drawable
+    // renderbuffer, read it back, and hand it to present_pixels, like the ES 1
+    // slow path does.
+    let fb0_pixels = if let Some(gles2_ctx) = gles_ctx.as_gles2_on_gl2_mut() {
+        gles2_ctx.present_and_read_default_framebuffer(env.window.as_mut().unwrap())
+    } else {
+        None
+    };
+    if let Some((pixels, w, h)) = fb0_pixels {
+        present_pixels(env, drawable, pixels, w, h);
+        let window = env.window.as_mut().unwrap();
+        let mut gles = super::sync_context(
+            &mut env.framework_state.opengles,
+            &mut env.objc,
+            window,
+            env.current_thread,
+        );
+        present_frame(
+            gles.as_mut(),
+            viewport,
+            rotation_matrix,
+            virtual_cursor_visible_at,
+        );
+        return;
+    }
 
     let mut gles_boxed = gles_ctx.make_current(env.window.as_mut().unwrap());
     let gles = gles_boxed.as_mut();
@@ -757,6 +811,4 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     // Restore the other bindings
     gles.BindTexture(gles11::TEXTURE_2D, old_texture_2d);
     gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, old_framebuffer);
-
-    // { let err = gles.GetError(); if err != 0 { panic!("{:#x}", err); } }
 }

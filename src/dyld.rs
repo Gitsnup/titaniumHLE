@@ -94,6 +94,7 @@ pub type HostFunction = &'static dyn CallFromGuest;
 ///
 /// See also [ConstantExports] and [ClassExports].
 pub type FunctionExports = &'static [(&'static str, HostFunction)];
+pub type FunctionExportsList = &'static [FunctionExports];
 
 /// Macro for exporting a function with C-style name mangling. See
 /// [FunctionExports].
@@ -166,6 +167,13 @@ pub enum HostConstant {
 /// See also [FunctionExports], [ClassExports].
 pub type ConstantExports = &'static [(&'static str, HostConstant)];
 
+/// Whether symbol resolution for the current app should prefer OpenGL ES 2.0
+/// exports over OpenGL ES 1.1 exports for functions that exist in both APIs
+/// (e.g. `glDrawElements`). Set when the app declares the `opengles-2`
+/// required device capability.
+pub static GLES2_PREFERRED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// Search the list of [HostDylib]s for a class/constant/function by its symbol.
 ///
 /// Example usage: `search_host_dylibs(|dylib| dylib.function_exports, "_foo")`
@@ -173,16 +181,29 @@ pub fn search_host_dylibs<T, F>(get_exports: F, symbol: &str) -> Option<&'static
 where
     F: Fn(&HostDylib) -> &'static [&'static [(&'static str, T)]],
 {
-    // TODO: In general, we should rarely if ever need to search the full set
-    //       of dylibs for a symbol. Now that we know which symbols belong to
-    //       which libraries, we should at least only search libraries that are
-    //       referenced by the app and currently "loaded". We probably should
-    //       also implement the Mach-O two-level symbol namespacing eventually.
     DYLIB_LIST
         .iter()
         .copied()
         .map(get_exports)
         .find_map(|lists| search_lists(lists, symbol))
+}
+
+/// Search the OpenGL ES dylib's function exports with the ES 2.0 list first.
+///
+/// Apps that require OpenGL ES 2.0 ([GLES2_PREFERRED]) use this so that
+/// function names shared between ES 1.1 and ES 2.0 (e.g. `glDrawElements`)
+/// resolve to the ES 2.0 implementations.
+pub fn search_host_gl_functions(symbol: &str) -> Option<&'static (&'static str, HostFunction)> {
+    use std::sync::atomic::Ordering;
+    if GLES2_PREFERRED.load(Ordering::SeqCst) {
+        if let Some(found) = search_lists(
+            crate::frameworks::opengles::FUNCTION_EXPORTS_ES2_FIRST,
+            symbol,
+        ) {
+            return Some(found);
+        }
+    }
+    search_host_dylibs(|dylib| dylib.function_exports, symbol)
 }
 
 /// Helper for working with [ClassExports]/[ConstantExports]/[FunctionExports].
@@ -759,7 +780,21 @@ impl Dyld {
             return None;
         }
 
-        if let Some(&(symbol, f)) = search_host_dylibs(|dylib| dylib.function_exports, symbol) {
+        let resolved = if GLES2_PREFERRED.load(std::sync::atomic::Ordering::SeqCst)
+            && search_lists(
+                crate::frameworks::opengles::FUNCTION_EXPORTS_ES2_FIRST,
+                symbol,
+            )
+            .is_some()
+        {
+            search_lists(
+                crate::frameworks::opengles::FUNCTION_EXPORTS_ES2_FIRST,
+                symbol,
+            )
+        } else {
+            search_host_dylibs(|dylib| dylib.function_exports, symbol)
+        };
+        if let Some(&(symbol, f)) = resolved {
             // Allocate an SVC ID for this host function
             let idx: u32 = self.linked_host_functions.len().try_into().unwrap();
             let mut svc = idx + Self::SVC_LINKED_FUNCTIONS_BASE;
@@ -837,7 +872,7 @@ impl Dyld {
         mem: &mut Mem,
         symbol: &str,
     ) -> Result<GuestFunction, ()> {
-        let &(symbol, f) = search_host_dylibs(|dylib| dylib.function_exports, symbol).ok_or(())?;
+        let &(symbol, f) = search_host_gl_functions(symbol).ok_or(())?;
         if let Some(&cached_fn) = self.non_lazy_host_functions.get(symbol) {
             return Ok(cached_fn);
         }

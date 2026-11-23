@@ -51,4 +51,9 @@ fn main() {
     )
     .write_bindings(GlobalGenerator, &mut file)
     .unwrap();
+
+    let mut file = File::create(out_dir.join("gl30.rs")).unwrap();
+    Registry::new(Api::Gl, (3, 0), Profile::Compatibility, Fallbacks::None, [])
+        .write_bindings(GlobalGenerator, &mut file)
+        .unwrap();
 }

@@ -69,7 +69,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (CGPoint)locationInView:(id)that_view { // UIView*
-    let &UITouchHostObject { location, window, .. } = env.objc.borrow(this);    log!("DBG locationInView:{:?} on touch at {:?}", that_view, location);
+    let &UITouchHostObject { location, window, .. } = env.objc.borrow(this);
     let location_in_window: CGPoint = msg![env; window convertPoint:location fromWindow:nil];
     if that_view == nil {
         location_in_window

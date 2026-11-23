@@ -8,6 +8,7 @@
 use super::NSTimeInterval;
 use crate::frameworks::foundation::ns_string;
 use crate::libc::mach::host::PHYSICAL_MEMORY;
+use crate::mem::GuestUSize;
 use crate::objc::{id, msg, msg_class, objc_classes, ClassExports};
 use crate::Environment;
 use std::time::Instant;
@@ -53,6 +54,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (u64)physicalMemory {
     assert_process_info_singleton(env, this); // TODO
     PHYSICAL_MEMORY.into()
+}
+- (GuestUSize)processorCount {
+    // The emulator doesn't care about the host CPU count; report a small,
+    // plausible value (single-core is typical of the era's devices).
+    1
+}
+
+- (GuestUSize)activeProcessorCount {
+    1
 }
 
 - (id)processName {

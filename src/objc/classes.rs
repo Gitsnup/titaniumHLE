@@ -511,7 +511,7 @@ impl ObjC {
         self.classes.iter()
     }
 
-    fn get_class(&self, name: &str, is_metaclass: bool, mem: &Mem) -> Option<Class> {
+    pub fn get_class(&self, name: &str, is_metaclass: bool, mem: &Mem) -> Option<Class> {
         let class = self.classes.get(name).copied()?;
         Some(if is_metaclass {
             Self::read_isa(class, mem)

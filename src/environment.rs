@@ -348,6 +348,14 @@ impl Environment {
 
         let device_family_override = options.device_family;
         let device_family_array = bundle.device_family_array();
+
+        if bundle
+            .required_device_capabilities()
+            .iter()
+            .any(|&capability| capability == "opengles-2")
+        {
+            dyld::GLES2_PREFERRED.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
         let device_family = match device_family_array.len() {
             // iPhone only or iPad only
             1 => {
@@ -1006,7 +1014,7 @@ impl Environment {
         }
     }
 
-    fn stack_trace_current(&self) {
+    pub fn stack_trace_current(&self) {
         if self.current_thread == 0 {
             echo_no_panic!("Attempting to produce stack trace for main thread:");
         } else {
@@ -1032,7 +1040,7 @@ impl Environment {
         }
     }
 
-    fn stack_trace_for_thread(&self, tid: usize) {
+    pub fn stack_trace_for_thread(&self, tid: usize) {
         if tid >= self.threads.len() {
             echo_no_panic!(
                 "Thread {} is too large ({} threads exist)!",
