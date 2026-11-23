@@ -713,11 +713,11 @@ fn glShaderSource(
         let translated = translate_shader_source(&concatenated);
         log_dbg!("Shader source for shader {shader:#x} (translated):\n{translated}");
         let source_cstring = std::ffi::CString::new(translated).unwrap();
-        let source_ptr: *const std::ffi::c_char = source_cstring.as_ptr() as _;
+        let source_ptr: *const gl21::types::GLchar = source_cstring.as_ptr() as _;
         gl21::ShaderSource(
             shader,
             1,
-            &source_ptr as *const _ as *const *const i8,
+            &source_ptr as *const _ as *const *const gl21::types::GLchar,
             ptr::null(),
         );
     });
@@ -736,7 +736,7 @@ fn glCompileShader(env: &mut Environment, shader: GLuint) {
                 shader,
                 len,
                 &mut out_len as *mut GLint as *mut _,
-                buf.as_mut_ptr() as *mut i8,
+                buf.as_mut_ptr() as *mut gl21::types::GLchar,
             );
             log!(
                 "glCompileShader({shader:#x}) FAILED: {}",
@@ -766,7 +766,7 @@ fn glGetShaderInfoLog(
             shader,
             host_log_size as _,
             &mut host_len as *mut GLint as *mut _,
-            host_buf.as_mut_ptr() as *mut i8,
+            host_buf.as_mut_ptr() as *mut gl21::types::GLchar,
         );
         if !length.is_null() {
             mem.write(length, host_len.min(buf_size.max(0)) as _);
@@ -865,7 +865,7 @@ fn glLinkProgram(env: &mut Environment, program: GLuint) {
                 program,
                 len,
                 &mut out_len as *mut GLint as *mut _,
-                buf.as_mut_ptr() as *mut i8,
+                buf.as_mut_ptr() as *mut gl21::types::GLchar,
             );
             log!(
                 "glLinkProgram({program:#x}) FAILED: {}",
@@ -898,7 +898,7 @@ fn glGetProgramInfoLog(
             program,
             host_log_size as _,
             &mut host_len as *mut GLint as *mut _,
-            host_buf.as_mut_ptr() as *mut i8,
+            host_buf.as_mut_ptr() as *mut gl21::types::GLchar,
         );
         if !length.is_null() {
             mem.write(length, host_len.min(buf_size.max(0)) as _);
@@ -974,7 +974,7 @@ fn glGetActiveUniform(
             length.cast(),
             size.cast(),
             type_.cast(),
-            name_buf.as_mut_ptr() as *mut i8,
+            name_buf.as_mut_ptr() as *mut gl21::types::GLchar,
         );
         if !name.is_null() && buf_size > 0 {
             let written = name_buf
@@ -1012,7 +1012,7 @@ fn glGetActiveAttrib(
             length.cast(),
             size.cast(),
             type_.cast(),
-            name_buf.as_mut_ptr() as *mut i8,
+            name_buf.as_mut_ptr() as *mut gl21::types::GLchar,
         );
         if !name.is_null() && buf_size > 0 {
             let written = name_buf

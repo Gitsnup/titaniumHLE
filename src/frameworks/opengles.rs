@@ -17,11 +17,14 @@ use touchHLE_gl_bindings::gles11::types::GLenum;
 
 use crate::mem::ConstPtr;
 
-/// Export lists for the OpenGL ES dylib, in both possible orders. Apps that
-/// require OpenGL ES 2.0 (see [crate::dyld::GLES2_PREFERRED]) resolve shared
-/// function names (e.g. `glDrawElements`) against the ES 2.0 list first.
-pub const FUNCTION_EXPORTS_ES1_FIRST: crate::dyld::FunctionExportsList =
-    &[gles_guest::FUNCTIONS, gles2_guest::FUNCTIONS];
+/// Export list for the OpenGL ES dylib containing the ES 1.1 functions.
+///
+/// Apps that require OpenGL ES 2.0 ([crate::dyld::GLES2_PREFERRED]) resolve
+/// function names shared between ES 1.1 and ES 2.0 (e.g. `glDrawElements`),
+/// and ES 2.0-only names, against [FUNCTION_EXPORTS_ES2_FIRST] instead — see
+/// `dyld::search_host_gl_functions`. The dylib itself only exports the ES 1.1
+/// list so that the two lists never contain duplicate exports.
+pub const FUNCTION_EXPORTS_ES1: crate::dyld::FunctionExportsList = &[gles_guest::FUNCTIONS];
 pub const FUNCTION_EXPORTS_ES2_FIRST: crate::dyld::FunctionExportsList =
     &[gles2_guest::FUNCTIONS, gles_guest::FUNCTIONS];
 
@@ -30,7 +33,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     aliases: &[],
     class_exports: &[eagl::CLASSES],
     constant_exports: &[eagl::CONSTANTS],
-    function_exports: FUNCTION_EXPORTS_ES1_FIRST,
+    function_exports: FUNCTION_EXPORTS_ES1,
 };
 
 #[derive(Default)]
