@@ -397,6 +397,11 @@ pub struct GLES1OnGL2Context {
     gl_ctx: GLContext,
     state: GLES1OnGL2State,
     is_loaded: bool,
+    /// Whether to save/restore the guest app's shader program and generic
+    /// vertex attribute state around fixed-function draws. This is needed
+    /// when a GLES 2.0 (shader-based) app's context is used for a
+    /// fixed-function present blit.
+    pub(crate) save_shader_state: bool,
 }
 impl GLESContext for GLES1OnGL2Context {
     fn description() -> &'static str {
@@ -412,6 +417,7 @@ impl GLESContext for GLES1OnGL2Context {
                 fixed_point_translation_buffers: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             },
             is_loaded: false,
+            save_shader_state: false,
         })
     }
 
@@ -419,20 +425,18 @@ impl GLESContext for GLES1OnGL2Context {
         &'gl_ctx mut self,
         window: &'win mut Window,
     ) -> Box<dyn GLES + 'gl_ctx> {
-        if self.gl_ctx.is_current() && self.is_loaded {
-            return Box::new(GLES1OnGL2 {
-                state: &mut self.state,
-            });
-        }
+        self.make_gl_current(window);
 
-        unsafe {
-            window.make_gl_context_current(&self.gl_ctx);
-        }
-        gl21::load_with(|s| window.gl_get_proc_address(s));
-        self.is_loaded = true;
+        let (saved_program, saved_attribs) = if self.save_shader_state {
+            unsafe { Self::save_shader_state_for_fixed_function_use() }
+        } else {
+            (0, Vec::new())
+        };
 
         Box::new(GLES1OnGL2 {
             state: &mut self.state,
+            saved_program,
+            saved_attribs,
         })
     }
 
@@ -442,25 +446,135 @@ impl GLESContext for GLES1OnGL2Context {
         loader_fn: &mut dyn FnMut(&'static str) -> *const std::ffi::c_void,
     ) -> Box<dyn GLES + 'gl_ctx> {
         if self.gl_ctx.is_current() && self.is_loaded {
+            let (saved_program, saved_attribs) = if self.save_shader_state {
+                unsafe { Self::save_shader_state_for_fixed_function_use() }
+            } else {
+                (0, Vec::new())
+            };
             return Box::new(GLES1OnGL2 {
                 state: &mut self.state,
+                saved_program,
+                saved_attribs,
             });
         }
 
         make_current_fn(&self.gl_ctx);
+        super::load_gl30(&mut |s| loader_fn(s));
         gl21::load_with(loader_fn);
         self.is_loaded = true;
 
+        let (saved_program, saved_attribs) = if self.save_shader_state {
+            unsafe { Self::save_shader_state_for_fixed_function_use() }
+        } else {
+            (0, Vec::new())
+        };
+
         Box::new(GLES1OnGL2 {
             state: &mut self.state,
+            saved_program,
+            saved_attribs,
         })
     }
 }
 
 pub struct GLES1OnGL2<'a> {
     state: &'a mut GLES1OnGL2State,
+    /// Program bound by the guest app before a fixed-function blit started
+    /// (only used when this adapter runs on behalf of a GLES2 context).
+    saved_program: GLuint,
+    /// Generic vertex attribute arrays that were enabled by the guest app.
+    saved_attribs: Vec<GLuint>,
+}
+impl Drop for GLES1OnGL2<'_> {
+    fn drop(&mut self) {
+        if self.saved_program != 0 || !self.saved_attribs.is_empty() {
+            unsafe {
+                GLES1OnGL2Context::restore_shader_state(self.saved_program, &self.saved_attribs)
+            };
+        }
+    }
 }
 
+pub const MAX_VERTEX_ATTRIBS: usize = 16;
+/// pname for `glGetIntegerv` that isn't in the GLES 1.1 API: the name of the
+/// currently-bound program object (OpenGL 2.0+).
+const GL_CURRENT_PROGRAM: GLenum = 0x8b8d;
+/// pname for `glGetVertexAttribiv`: whether a generic vertex attribute array
+/// is enabled (OpenGL 2.0+).
+const GL_VERTEX_ATTRIB_ARRAY_ENABLED: GLenum = 0x8622;
+
+impl GLES1OnGL2Context {
+    /// Construct a GLES1-on-GL2 wrapper around an already-created GL context.
+    ///
+    /// Used by the GLES2-on-GL2 layer, which shares a single GL context
+    /// between the guest's shader-based rendering and the fixed-function
+    /// blit used to present frames.
+    pub(crate) fn new_with_context(gl_ctx: GLContext) -> Self {
+        Self {
+            gl_ctx,
+            state: GLES1OnGL2State {
+                pointer_is_fixed_point: [false; ARRAYS.len()],
+                fixed_point_texture_units: HashSet::new(),
+                fixed_point_translation_buffers: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+            },
+            is_loaded: false,
+            save_shader_state: true,
+        }
+    }
+
+    /// Make the underlying GL context current, loading the bindings if
+    /// necessary, without creating a [GLES] adapter.
+    pub(crate) fn make_gl_current(&mut self, window: &mut Window) {
+        if self.gl_ctx.is_current() && self.is_loaded {
+            return;
+        }
+        unsafe {
+            window.make_gl_context_current(&self.gl_ctx);
+        }
+        gl21::load_with(|s| window.gl_get_proc_address(s));
+        touchHLE_gl_bindings::gl30::load_with(|s| window.gl_get_proc_address(s));
+        self.is_loaded = true;
+    }
+
+    /// Save the guest app's shader state (current program and enabled generic
+    /// vertex attribute arrays) and reset it so that fixed-function drawing
+    /// is safe. Returns the saved state for later restoration.
+    ///
+    /// Must only be called with the GL context current.
+    pub(crate) unsafe fn save_shader_state_for_fixed_function_use() -> (GLuint, Vec<GLuint>) {
+        let mut program: GLuint = 0;
+        gl21::GetIntegerv(GL_CURRENT_PROGRAM, &mut program as *mut GLuint as *mut _);
+        let mut attribs = Vec::new();
+        for index in 0..MAX_VERTEX_ATTRIBS as GLuint {
+            let mut enabled: GLint = 0;
+            gl21::GetVertexAttribiv(
+                index,
+                GL_VERTEX_ATTRIB_ARRAY_ENABLED,
+                &mut enabled as *mut GLint as *mut _,
+            );
+            if enabled != 0 {
+                attribs.push(index);
+                gl21::DisableVertexAttribArray(index);
+            }
+        }
+        if program != 0 {
+            gl21::UseProgram(gl21::ZERO);
+        }
+        (program, attribs)
+    }
+
+    /// Restore state saved by [Self::save_shader_state_for_fixed_function_use].
+    ///
+    /// Must only be called with the GL context current.
+    pub(crate) unsafe fn restore_shader_state(program: GLuint, attribs: &[GLuint]) {
+        if program != 0 {
+            gl21::UseProgram(program);
+        }
+        for &index in attribs {
+            gl21::EnableVertexAttribArray(index);
+        }
+    }
+}
 impl GLES1OnGL2<'_> {
     /// If any arrays with fixed-point data are in use at the time of a draw
     /// call, this function will convert the data to floating-point and

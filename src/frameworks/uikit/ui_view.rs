@@ -965,7 +965,21 @@ pub const CLASSES: ClassExports = objc_classes! {
     let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
     msg![env; layer frame]
 }
-- (())setFrame:(CGRect)frame {
+- (())setFrame:(CGRect)new_frame {
+    let mut frame = new_frame;
+    let layer0 = env.objc.borrow::<UIViewHostObject>(this).layer;
+    let is_eagl = env
+        .objc
+        .get_class("CAEAGLLayer", false, &mut env.mem)
+        .map(|cls| crate::objc::ObjC::read_isa(layer0, &mut env.mem) == cls)
+        .unwrap_or(false);
+    if is_eagl {
+        // Some games compute bizarre view sizes for their GL view ( Smash Hit
+        // produces a 2:7 aspect view), which breaks the projection/layout and
+        // the fullscreen fast path. Snap GL views to the screen bounds.
+        let screen: id = msg_class![env; UIScreen mainScreen];
+        frame = msg![env; screen bounds];
+    }
     let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
     let old_frame: CGRect = msg![env; layer frame];
     () = msg![env; layer setFrame:frame];

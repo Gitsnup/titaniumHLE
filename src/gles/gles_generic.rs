@@ -58,6 +58,14 @@ pub trait GLESContext {
         make_current_fn: &mut dyn FnMut(&GLContext),
         loader_fn: &mut dyn FnMut(&'static str) -> *const std::ffi::c_void,
     ) -> Box<dyn GLES + 'gl_ctx>;
+
+    /// If this context is a [GLES2](crate::gles::gles2_on_gl2) context,
+    /// downcast to it, so guest-facing OpenGL ES 2.0 code can make calls
+    /// against the concrete implementation.
+    fn as_gles2_on_gl2_mut(&mut self) -> Option<&mut crate::gles::gles2_on_gl2::GLES2OnGL2Context> {
+        let _ = self;
+        None
+    }
 }
 
 /// An active GLES context that can be used.

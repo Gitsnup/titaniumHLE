@@ -38,7 +38,7 @@ type GuestGLintptr = GuestISize;
 
 /// List of compressed formats supported by our emulation.
 /// Currently, it's all the PVRTC and all paletted ones.
-const SUPPORTED_COMPRESSED_TEXTURE_FORMATS: &[GLenum] = &[
+pub(crate) const SUPPORTED_COMPRESSED_TEXTURE_FORMATS: &[GLenum] = &[
     // PVRTC
     gles11::COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,
     gles11::COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,

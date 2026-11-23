@@ -7,12 +7,18 @@
 
 use crate::dyld::{ConstantExports, HostConstant};
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
-use crate::objc::{id, msg, msg_class, objc_classes, ClassExports, TrivialHostObject};
+use crate::objc::{id, msg, msg_class, objc_classes, ClassExports, HostObject, TrivialHostObject};
 
 #[derive(Default)]
 pub struct State {
     main_screen: Option<id>,
+    main_screen_mode: Option<id>,
 }
+
+pub struct UIScreenModeHostObject {
+    size: CGSize,
+}
+impl HostObject for UIScreenModeHostObject {}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -70,9 +76,39 @@ pub const CLASSES: ClassExports = objc_classes! {
     bounds
 }
 
+- (id)currentMode {
+    if let Some(mode) = env.framework_state.uikit.ui_screen.main_screen_mode {
+        return mode;
+    }
+    let scale: CGFloat = msg![env; this scale];
+    let (width, height) = env.window().device_family().portrait_size();
+    let mode_class = env.objc.get_known_class("UIScreenMode", &mut env.mem);
+    let mode = env.objc.alloc_static_object(
+        mode_class,
+        Box::new(UIScreenModeHostObject {
+            size: CGSize {
+                width: width as f32 * scale,
+                height: height as f32 * scale,
+            },
+        }),
+        &mut env.mem
+    );
+    env.framework_state.uikit.ui_screen.main_screen_mode = Some(mode);
+    mode
+}
+
 - (CGFloat)scale {
     // TODO: support retina
     1.0
+}
+
+@end
+
+@implementation UIScreenMode: NSObject
+
+- (CGSize)size {
+    let host_obj = env.objc.borrow::<UIScreenModeHostObject>(this);
+    host_obj.size
 }
 
 @end
