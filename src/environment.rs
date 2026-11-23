@@ -351,8 +351,7 @@ impl Environment {
 
         if bundle
             .required_device_capabilities()
-            .iter()
-            .any(|&capability| capability == "opengles-2")
+            .contains(&"opengles-2")
         {
             dyld::GLES2_PREFERRED.store(true, std::sync::atomic::Ordering::SeqCst);
         }
@@ -685,12 +684,15 @@ impl Environment {
                     panic!("Main function exited unexpectedly!");
                 })
             }));
-            if let Err(e) = res {
-                let panic_cell = env.panic_cell.clone();
-                panic_cell.set(Some(env));
-                std::panic::resume_unwind(e);
-            }
-            env
+            // The thread closure always panics, so this always errors.
+            #[allow(irrefutable_let_patterns)]
+            let Err(e) = res
+            else {
+                unreachable!();
+            };
+            let panic_cell = env.panic_cell.clone();
+            panic_cell.set(Some(env));
+            std::panic::resume_unwind(e);
         });
         let main_thread = Thread {
             state: ThreadState::Running,
@@ -1131,12 +1133,15 @@ impl Environment {
                     curr_thread.state = ThreadState::Dead;
                 });
             }));
-            if let Err(e) = res {
-                let panic_cell = env.panic_cell.clone();
-                panic_cell.set(Some(env));
-                std::panic::resume_unwind(e);
-            }
-            env
+            // The thread closure always panics, so this always errors.
+            #[allow(irrefutable_let_patterns)]
+            let Err(e) = res
+            else {
+                unreachable!();
+            };
+            let panic_cell = env.panic_cell.clone();
+            panic_cell.set(Some(env));
+            std::panic::resume_unwind(e);
         });
 
         self.threads.push(Thread {

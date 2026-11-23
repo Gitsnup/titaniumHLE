@@ -714,12 +714,7 @@ fn glShaderSource(
         log_dbg!("Shader source for shader {shader:#x} (translated):\n{translated}");
         let source_cstring = std::ffi::CString::new(translated).unwrap();
         let source_ptr: *const gl21::types::GLchar = source_cstring.as_ptr() as _;
-        gl21::ShaderSource(
-            shader,
-            1,
-            &source_ptr as *const _ as *const *const gl21::types::GLchar,
-            ptr::null(),
-        );
+        gl21::ShaderSource(shader, 1, &source_ptr as *const _, ptr::null());
     });
 }
 fn glCompileShader(env: &mut Environment, shader: GLuint) {

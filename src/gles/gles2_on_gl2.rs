@@ -12,11 +12,11 @@
 //! - Almost all OpenGL ES 2.0 functions exist in desktop OpenGL 2.1 (via
 //!   `EXT_framebuffer_object`) with the same names and semantics.
 //! - Guest GLSL ES 1.00 shaders are preprocessed (see
-//!   [crate::gles::gles2_on_gl2::translate_shader_source] in the guest
-//!   wrapper) so that desktop GLSL accepts them.
+//!   the `translate_shader_source` function in `frameworks::opengles::gles2_guest`)
+//!   so that desktop GLSL accepts them.
 //! - The handful of ES 2.0-specific functions that have no desktop
 //!   equivalent (`glGetShaderPrecisionFormat` etc.) are implemented in the
-//!   guest-facing wrapper ([crate::frameworks::opengles::gles2_guest]).
+//!   guest-facing wrapper (the `frameworks::opengles::gles2_guest` module).
 //! - In EAGL, framebuffer object 0 *is* the renderbuffer that the app
 //!   attached to its `CAEAGLLayer`. On desktop GL, framebuffer 0 is the
 //!   window surface, which we can't read back from. We therefore give the
@@ -535,7 +535,7 @@ impl<'a> GLES2Active<'a> {
                 pixels.as_mut_ptr() as *mut _,
             );
         }
-        for px in pixels.chunks_exact_mut(4) {
+        for px in pixels.as_mut_slice().as_chunks_mut::<4>().0 {
             px.swap(0, 2);
         }
         unsafe { gl30::BindFramebuffer(gl30::FRAMEBUFFER, old_draw as GLuint) };

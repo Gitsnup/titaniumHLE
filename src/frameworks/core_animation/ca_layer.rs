@@ -258,8 +258,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     // Some games size their GL view oddly (Smash Hit produces a 2:7 aspect
     // view), so make CAEAGLLayer bounds follow the guest screen instead of
     // the (broken) view frame.
-    if env.objc.get_class(&"CAEAGLLayer", false, &mut env.mem)
-        .map_or(false, |cls| msg![env; this isKindOfClass:cls])
+    if env
+        .objc
+        .get_class("CAEAGLLayer", false, &env.mem)
+        .is_some_and(|cls| msg![env; this isKindOfClass:cls])
     {
         let (width, height) = env.window().device_family().portrait_size();
         return CGRect {
@@ -271,9 +273,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (())setBounds:(CGRect)new_bounds {
     let mut bounds = new_bounds;
-    if env.objc.get_class(&"CAEAGLLayer", false, &mut env.mem)
-        .map(|ca_eagl_layer_class| crate::objc::ObjC::read_isa(this, &mut env.mem) == ca_eagl_layer_class)
-        .unwrap_or(false)
+    if env
+        .objc
+        .get_class("CAEAGLLayer", false, &env.mem)
+        .is_some_and(|ca_eagl_layer_class| {
+            crate::objc::ObjC::read_isa(this, &env.mem) == ca_eagl_layer_class
+        })
     {
         // This layer is an EAGL backing store. Force its bounds to the guest
         // screen size: some games compute bizarre view sizes, which would

@@ -185,5 +185,5 @@ pub fn create_gles2_ctx(env: &mut Environment) -> Box<dyn GLESContext> {
 /// Load the OpenGL 3.0 bindings using `loader_fn`, which should get the
 /// address of a GL function given its name.
 pub(crate) fn load_gl30(loader_fn: &mut dyn FnMut(&'static str) -> *const std::ffi::c_void) {
-    touchHLE_gl_bindings::gl30::load_with(|s| loader_fn(s));
+    touchHLE_gl_bindings::gl30::load_with(loader_fn);
 }

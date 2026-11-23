@@ -9,16 +9,30 @@ use std::process::Command;
 
 // adapted from `assert_cmd` crate
 fn target_dir() -> PathBuf {
-    env::current_exe()
+    // Normally the test binary lives in `target/<profile>/deps/`, in which
+    // case the `touchHLE` binary is one level up. However, depending on the
+    // cargo version, the test binary may instead live in the build script's
+    // output directory (`target/<profile>/build/touchHLE/<hash>/out/`), in
+    // which case the `touchHLE` binary is several levels up. Handle both by
+    // walking up the directory tree until the `touchHLE` binary is found.
+    let mut path = env::current_exe()
         .ok()
         .map(|mut path| {
             path.pop();
-            if path.ends_with("deps") {
-                path.pop();
-            }
             path
         })
-        .unwrap()
+        .unwrap();
+    let binary_file_name = format!("touchHLE{}", env::consts::EXE_SUFFIX);
+    loop {
+        if path.join(&binary_file_name).is_file() {
+            return path;
+        }
+        assert!(
+            path.pop(),
+            "failed to find the touchHLE binary in any parent directory of {:?}",
+            env::current_exe()
+        );
+    }
 }
 
 // https://stackoverflow.com/a/35907071/2241008

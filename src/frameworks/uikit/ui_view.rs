@@ -970,9 +970,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     let layer0 = env.objc.borrow::<UIViewHostObject>(this).layer;
     let is_eagl = env
         .objc
-        .get_class("CAEAGLLayer", false, &mut env.mem)
-        .map(|cls| crate::objc::ObjC::read_isa(layer0, &mut env.mem) == cls)
-        .unwrap_or(false);
+        .get_class("CAEAGLLayer", false, &env.mem)
+        .is_some_and(|cls| crate::objc::ObjC::read_isa(layer0, &env.mem) == cls);
     if is_eagl {
         // Some games compute bizarre view sizes for their GL view ( Smash Hit
         // produces a 2:7 aspect view), which breaks the projection/layout and
