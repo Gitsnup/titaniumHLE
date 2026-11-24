@@ -33,6 +33,13 @@ fn sleep(env: &mut Environment, seconds: u32) -> u32 {
     // touchHLE never does that currently, so 0 is always correct here.
     0
 }
+fn alarm(_env: &mut Environment, _seconds: u32) -> u32 {
+    // touchHLE has no signal delivery, so no alarm can ever fire; return 0
+    // ("no previously scheduled alarm") which is a safe no-op behaviour.
+    log_once!("Warning: app called alarm() (no-op)");
+    0
+}
+
 
 fn usleep(env: &mut Environment, useconds: useconds_t) -> i32 {
     // TODO: handle errno properly
@@ -191,6 +198,8 @@ fn sysconf(_env: &mut Environment, name: i32) -> i32 {
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(sleep(_)),
+    export_c_func!(alarm(_)),
+
     export_c_func!(usleep(_)),
     export_c_func!(getpid()),
     export_c_func!(getppid()),

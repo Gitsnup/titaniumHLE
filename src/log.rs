@@ -117,4 +117,7 @@ pub const ENABLED_MODULES: &[&str] = &[
     "touchHLE::frameworks::uikit::ui_touch",
     "touchHLE::window",
     "touchHLE::libc::zlib",
+    "touchHLE::gles::gles2_on_gl2",
+    "touchHLE::frameworks::opengles::gles2_guest",
+    "touchHLE::gles::gles1_on_gl2",
 ];

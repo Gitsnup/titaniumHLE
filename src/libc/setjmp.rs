@@ -89,4 +89,21 @@ fn longjmp(env: &mut Environment, jmp_buf: MutPtr<JmpBuf>, status: u32) {
         .branch(GuestFunction::from_addr_with_thumb_bit(buf.lr));
 }
 
-pub const FUNCTIONS: FunctionExports = &[export_c_func!(setjmp(_)), export_c_func!(longjmp(_, _))];
+/// ARM iOS has no separate sigsetjmp/siglongjmp symbols; apps calling them get
+/// aliased to setjmp/longjmp semantics (savesigmask flag is ignored).
+#[allow(non_snake_case)]
+fn sigsetjmp(env: &mut Environment, jmp_buf: MutPtr<JmpBuf>, _savesigmask: i32) -> i32 {
+    setjmp(env, jmp_buf)
+}
+
+#[allow(non_snake_case)]
+fn siglongjmp(env: &mut Environment, jmp_buf: MutPtr<JmpBuf>, status: u32) {
+    longjmp(env, jmp_buf, status)
+}
+
+pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(setjmp(_)),
+    export_c_func!(longjmp(_, _)),
+    export_c_func!(sigsetjmp(_, _)),
+    export_c_func!(siglongjmp(_, _)),
+];

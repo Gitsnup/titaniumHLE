@@ -124,6 +124,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithAPI:(EAGLRenderingAPI)api sharegroup:(id)group {
+    log!("DBG initWithAPI:sharegroup: api={} group={:?}", api, group);
     if api != kEAGLRenderingAPIOpenGLES1 && api != kEAGLRenderingAPIOpenGLES2 {
         log!(
             "TODO: App requested EAGL initWithAPI:{} sharegroup:{:?}, returning nil as we only support APIs 1 and 2 for now",
@@ -147,10 +148,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     {
         let _prev_ctx = prev_context.make_current(window);
     }
-    env.window.as_mut().unwrap().set_share_with_current_context(true);
+    // Context sharing is only possible between compatible context versions.
+    // On platforms where the GLES 2.0 path uses an ES 3.0 context (e.g.
+    // Android/EGL), sharing with the guest's other contexts (potentially
+    // ES 1.1) isn't supported by the driver, so skip it.
+    if !crate::gles::gles2_on_gl2::GLES2OnGL2Context::uses_gles3_context() {
+        env.window.as_mut().unwrap().set_share_with_current_context(true);
+    }
 
     let mut gles_ins: Box<dyn GLESContext> = if api == kEAGLRenderingAPIOpenGLES2 {
-        Box::new(create_gles2_ctx(env))
+        crate::gles::create_gles2_ctx(env)
     } else {
         create_gles1_ctx(env)
     };
@@ -172,6 +179,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithAPI:(EAGLRenderingAPI)api {
+    log!("DBG initWithAPI: api={}", api);
     if api != kEAGLRenderingAPIOpenGLES1 && api != kEAGLRenderingAPIOpenGLES2 {
         log!(
             "TODO: App requested EAGL initWithAPI:{}, returning nil as we only support APIs 1 and 2 for now",
@@ -181,7 +189,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 
     let mut gles_ins: Box<dyn GLESContext> = if api == kEAGLRenderingAPIOpenGLES2 {
-        Box::new(create_gles2_ctx(env))
+        crate::gles::create_gles2_ctx(env)
     } else {
         create_gles1_ctx(env)
     };
@@ -226,7 +234,6 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (bool)renderbufferStorage:(NSUInteger)target
                fromDrawable:(id)drawable { // EAGLDrawable (always CAEAGLayer*)
     assert!(drawable != nil); // TODO: handle unbinding
-
     assert!(target == gles11::RENDERBUFFER_OES);
 
     let props: id = msg![env; drawable drawableProperties];
@@ -261,6 +268,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let window = env.window.as_mut().expect("OpenGL ES is not supported in headless mode");
 
     let renderbuffer = {
+
         // Unclear from documentation if this method requires an appropriate
         // context to already be active, but that seems to be the case
         // in practice?
@@ -288,7 +296,6 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (bool)presentRenderbuffer:(NSUInteger)target {
     assert!(target == gles11::RENDERBUFFER_OES);
-
     // The presented frame should be displayed ASAP, but the next one must be
     // delayed, so this needs to be checked before returning.
     let sleep_for = limit_framerate(&mut env.objc.borrow_mut::<EAGLContextHostObject>(this).next_frame_due, &env.options);

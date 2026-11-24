@@ -27,6 +27,7 @@ use crate::Environment;
 use std::ffi::CStr;
 use std::ptr;
 use touchHLE_gl_bindings::gl21compat as gl21;
+use touchHLE_gl_bindings::gl30;
 
 type GuestGLsizeiptr = GuestISize;
 type GuestGLintptr = GuestISize;
@@ -710,8 +711,16 @@ fn glShaderSource(
             );
             concatenated.push('\n');
         }
-        let translated = translate_shader_source(&concatenated);
-        log_dbg!("Shader source for shader {shader:#x} (translated):\n{translated}");
+        let translated = if crate::gles::gles2_on_gl2::GLES2OnGL2Context::uses_gles3_context() {
+            // On a real ES 3.0 host, GLSL ES 1.00 sources are valid as-is;
+            // the desktop translation would actually break them.
+            concatenated.clone()
+        } else {
+            translate_shader_source(&concatenated)
+        };
+        if std::env::var_os("TOUCHHLE_DEBUG_SHADERS").is_some() {
+            log!("Shader source for shader {shader:#x}:\n{translated}");
+        }
         let source_cstring = std::ffi::CString::new(translated).unwrap();
         let source_ptr: *const gl21::types::GLchar = source_cstring.as_ptr() as _;
         gl21::ShaderSource(shader, 1, &source_ptr as *const _, ptr::null());
@@ -1273,7 +1282,7 @@ fn glDrawElements(
 fn glGenFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: MutPtr<GLuint>) {
     with_gles2_and_mem(env, |gles, mem| unsafe {
         let framebuffers = mem.ptr_at_mut(framebuffers, n.unsigned_abs() as _);
-        gl21::GenFramebuffersEXT(n, framebuffers.cast());
+        gl30::GenFramebuffers(n, framebuffers.cast());
         for i in 0..n.unsigned_abs() as usize {
             // Record that this name is a real framebuffer (not a renderbuffer
             // used under the EAGL idiom): desktop GL keeps FBO and RBO names
@@ -1287,7 +1296,7 @@ fn glGenFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: MutPtr<GLu
 fn glDeleteFramebuffers(env: &mut Environment, n: GLsizei, framebuffers: ConstPtr<GLuint>) {
     with_gles2_and_mem(env, |_gles, mem| unsafe {
         let framebuffers = mem.ptr_at(framebuffers, n.unsigned_abs() as _);
-        gl21::DeleteFramebuffersEXT(n, framebuffers.cast());
+        gl30::DeleteFramebuffers(n, framebuffers.cast());
     });
 }
 fn glBindFramebuffer(env: &mut Environment, target: GLenum, framebuffer: GLuint) {
@@ -1295,12 +1304,12 @@ fn glBindFramebuffer(env: &mut Environment, target: GLenum, framebuffer: GLuint)
 }
 fn glIsFramebuffer(env: &mut Environment, framebuffer: GLuint) -> GLboolean {
     with_gles2_and_mem(env, |_gles, _mem| unsafe {
-        gl21::IsFramebufferEXT(framebuffer)
+        gl30::IsFramebuffer(framebuffer)
     })
 }
 fn glCheckFramebufferStatus(env: &mut Environment, target: GLenum) -> GLenum {
     with_gles2_and_mem(env, |_gles, _mem| unsafe {
-        gl21::CheckFramebufferStatusEXT(target)
+        gl30::CheckFramebufferStatus(target)
     })
 }
 fn glFramebufferRenderbuffer(
@@ -1324,7 +1333,7 @@ fn glFramebufferRenderbuffer(
                 _ => {}
             }
         }
-        gl21::FramebufferRenderbufferEXT(target, attachment, renderbuffertarget, renderbuffer)
+        gl30::FramebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer)
     });
 }
 fn glFramebufferTexture2D(
@@ -1336,29 +1345,29 @@ fn glFramebufferTexture2D(
     level: GLint,
 ) {
     with_gles2_and_mem(env, |_gles, _mem| unsafe {
-        gl21::FramebufferTexture2DEXT(target, attachment, textarget, texture, level)
+        gl30::FramebufferTexture2D(target, attachment, textarget, texture, level)
     });
 }
 fn glGenRenderbuffers(env: &mut Environment, n: GLsizei, renderbuffers: MutPtr<GLuint>) {
     with_gles2_and_mem(env, |_gles, mem| unsafe {
         let renderbuffers = mem.ptr_at_mut(renderbuffers, n.unsigned_abs() as _);
-        gl21::GenRenderbuffersEXT(n, renderbuffers.cast());
+        gl30::GenRenderbuffers(n, renderbuffers.cast());
     });
 }
 fn glDeleteRenderbuffers(env: &mut Environment, n: GLsizei, renderbuffers: ConstPtr<GLuint>) {
     with_gles2_and_mem(env, |_gles, mem| unsafe {
         let renderbuffers = mem.ptr_at(renderbuffers, n.unsigned_abs() as _);
-        gl21::DeleteRenderbuffersEXT(n, renderbuffers.cast());
+        gl30::DeleteRenderbuffers(n, renderbuffers.cast());
     });
 }
 fn glBindRenderbuffer(env: &mut Environment, target: GLenum, renderbuffer: GLuint) {
     with_gles2_and_mem(env, |_gles, _mem| unsafe {
-        gl21::BindRenderbufferEXT(target, renderbuffer)
+        gl30::BindRenderbuffer(target, renderbuffer)
     });
 }
 fn glIsRenderbuffer(env: &mut Environment, renderbuffer: GLuint) -> GLboolean {
     with_gles2_and_mem(env, |_gles, _mem| unsafe {
-        gl21::IsRenderbufferEXT(renderbuffer)
+        gl30::IsRenderbuffer(renderbuffer)
     })
 }
 fn glRenderbufferStorage(
@@ -1376,7 +1385,7 @@ fn glRenderbufferStorage(
             0x8d62 /* GL_RGB565 */ => gl21::RGB,
             _ => internalformat,
         };
-        gl21::RenderbufferStorageEXT(target, internalformat, width, height)
+        gl30::RenderbufferStorage(target, internalformat, width, height)
     });
 }
 fn glGetRenderbufferParameteriv(
@@ -1387,12 +1396,12 @@ fn glGetRenderbufferParameteriv(
 ) {
     with_gles2_and_mem(env, |_gles, mem| unsafe {
         let params = mem.ptr_at_mut(params, 4);
-        gl21::GetRenderbufferParameterivEXT(target, pname, params.cast());
+        gl30::GetRenderbufferParameteriv(target, pname, params.cast());
     });
 }
 fn glGenerateMipmap(env: &mut Environment, target: GLenum) {
     with_gles2_and_mem(env, |_gles, _mem| unsafe {
-        gl21::GenerateMipmapEXT(target)
+        gl30::GenerateMipmap(target)
     });
 }
 

@@ -57,6 +57,11 @@ fn time(env: &mut Environment, out: MutPtr<time_t>) -> time_t {
     time
 }
 
+fn difftime(env: &mut Environment, time1: time_t, time0: time_t) -> f64 {
+    set_errno(env, 0);
+    (time1 - time0) as f64
+}
+
 fn tzset(_env: &mut Environment) {
     log!("TODO: tzset()");
 }
@@ -780,6 +785,8 @@ pub fn strftime(
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(clock()),
     export_c_func!(time(_)),
+    export_c_func!(difftime(_, _)),
+
     export_c_func!(tzset()),
     export_c_func!(gmtime_r(_, _)),
     export_c_func!(gmtime(_)),

@@ -389,9 +389,29 @@ fn unsetenv(env: &mut Environment, name: ConstPtr<u8>) -> i32 {
 /// doesn't match the emulator's transparent malloc layout. Panicking there
 /// makes such apps unplayable, so instead we log and return, and the caller
 /// proceeds (leaking the block if the free was bogus).
+
+/// Stub for `___assert_rtn` (libSystem's assertion failure routine, also used
+/// as a general compiler support function). Like our `abort()` workaround, log
+/// it and try to continue rather than killing the app.
+fn assert_rtn(
+    env: &mut Environment,
+    func: ConstPtr<u8>,
+    file: ConstPtr<u8>,
+    line: i32,
+    msg: ConstPtr<u8>,
+) {
+    let func_str = env.mem.cstr_at_utf8(func);
+    let file_str = env.mem.cstr_at_utf8(file);
+    let msg_str = env.mem.cstr_at_utf8(msg);
+    log!(
+        "Warning: App called ___assert_rtn({func_str:?}, {file_str:?}, {line}, {msg_str:?})! Trying to continue (this is a leak and may misbehave)."
+    );
+}
+
 fn abort_no_return_workaround(_env: &mut Environment) {
     log!("Warning: App called abort()! Trying to continue (this is a leak and may misbehave).");
 }
+
 
 fn exit(env: &mut Environment, exit_code: i32) {
     // TODO: handle errno properly
@@ -736,6 +756,7 @@ fn fcvt(
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func_aliased!("abort", abort_no_return_workaround()),
+    export_c_func_aliased!("__assert_rtn", assert_rtn(_, _, _, _)),
     export_c_func!(malloc(_)),
     export_c_func!(sbrk(_)),
     export_c_func!(malloc_size(_)),

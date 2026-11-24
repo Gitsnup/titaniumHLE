@@ -179,6 +179,12 @@ pub enum GLVersion {
     GLES11,
     /// OpenGL 2.1 compatibility profile
     GL21Compat,
+    /// OpenGL ES 3.0
+    ///
+    /// Used by the GLES2-on-GL2 layer on platforms without desktop GL
+    /// (e.g. Android), where the emulation runs on a real ES 3.0 context
+    /// instead of a desktop compatibility context.
+    GLES30,
 }
 
 pub struct GLContext(sdl2::video::GLContext);
@@ -1209,6 +1215,10 @@ impl Window {
                 attr.set_context_version(2, 1);
                 attr.set_context_profile(sdl2::video::GLProfile::Compatibility);
             }
+            GLVersion::GLES30 => {
+                attr.set_context_version(3, 0);
+                attr.set_context_profile(sdl2::video::GLProfile::GLES);
+            }
         }
 
         let gl_ctx = self.window.gl_create_context()?;
@@ -1219,7 +1229,30 @@ impl Window {
     pub fn gl_get_proc_address(&self, procname: &str) -> *const std::ffi::c_void {
         // For some reason, rust-sdl2 uses *const (), but () is not meant to be
         // used for void pointees (just void results), so let's fix that.
-        self.video_ctx.gl_get_proc_address(procname) as *const _
+        let addr = self.video_ctx.gl_get_proc_address(procname) as *const std::ffi::c_void;
+        if !addr.is_null() {
+            return addr;
+        }
+        // Extension-suffixed entry points sometimes don't exist even when the
+        // same function does under its core name. This matters on OpenGL ES 3
+        // contexts (e.g. Android), which have core framebuffer-object functions
+        // but not the desktop `...EXT` aliases that the GLES1-on-GL2 layer's
+        // bindings request. Fall back to the unsuffixed name.
+        for suffix in ["EXT", "OES"] {
+            if let Some(stem) = procname.strip_suffix(suffix) {
+                let fallback =
+                    self.video_ctx.gl_get_proc_address(stem) as *const std::ffi::c_void;
+                if !fallback.is_null() {
+                    log!(
+                        "GL proc address fallback: {} not found, using {}",
+                        procname,
+                        stem
+                    );
+                    return fallback;
+                }
+            }
+        }
+        addr
     }
 
     pub fn set_share_with_current_context(&self, value: bool) {

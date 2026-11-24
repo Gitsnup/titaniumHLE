@@ -174,7 +174,7 @@ impl Gles2DefaultFramebuffer {
             framebuffer
         };
         unsafe {
-            gl21::BindFramebufferEXT(target, host_framebuffer);
+            gl30::BindFramebuffer(target, host_framebuffer);
         }
     }
 
@@ -190,9 +190,9 @@ impl Gles2DefaultFramebuffer {
             let mut fbo = 0;
             gl30::GenFramebuffers(1, &mut fbo);
             // Determine whether this renderbuffer holds color or depth data.
-            gl21::BindRenderbufferEXT(gl21::RENDERBUFFER_EXT, renderbuffer);
+            gl30::BindRenderbuffer(gl21::RENDERBUFFER_EXT, renderbuffer);
             let mut internal_format = 0;
-            gl21::GetRenderbufferParameterivEXT(
+            gl30::GetRenderbufferParameteriv(
                 gl21::RENDERBUFFER_EXT,
                 0x8D44, /* GL_RENDERBUFFER_INTERNAL_FORMAT_OES */
                 &mut internal_format,
@@ -202,16 +202,16 @@ impl Gles2DefaultFramebuffer {
                 || internal_format == 0x81a5 /* GL_DEPTH_COMPONENT24 */
                 || internal_format == 0x81a6 /* GL_DEPTH_COMPONENT32 */
                 || internal_format == gl30::DEPTH_COMPONENT16 as GLint;
-            gl21::BindFramebufferEXT(gl21::FRAMEBUFFER_EXT, fbo);
+            gl30::BindFramebuffer(gl21::FRAMEBUFFER_EXT, fbo);
             if is_depth {
-                gl21::FramebufferRenderbufferEXT(
+                gl30::FramebufferRenderbuffer(
                     gl21::FRAMEBUFFER_EXT,
                     gl30::DEPTH_ATTACHMENT,
                     gl21::RENDERBUFFER_EXT,
                     renderbuffer,
                 );
             } else {
-                gl21::FramebufferRenderbufferEXT(
+                gl30::FramebufferRenderbuffer(
                     gl21::FRAMEBUFFER_EXT,
                     gl30::COLOR_ATTACHMENT0,
                     gl21::RENDERBUFFER_EXT,
@@ -224,14 +224,14 @@ impl Gles2DefaultFramebuffer {
                 .copied()
                 .unwrap_or(0);
             if stencil_rb != 0 {
-                gl21::FramebufferRenderbufferEXT(
+                gl30::FramebufferRenderbuffer(
                     gl21::FRAMEBUFFER_EXT,
                     gl30::STENCIL_ATTACHMENT,
                     gl21::RENDERBUFFER_EXT,
                     stencil_rb,
                 );
             }
-            gl21::BindFramebufferEXT(gl21::FRAMEBUFFER_EXT, 0);
+            gl30::BindFramebuffer(gl21::FRAMEBUFFER_EXT, 0);
             fbo
         };
         self.framebuffer_wrappers.insert(renderbuffer, fbo);
@@ -266,7 +266,7 @@ impl Gles2DefaultFramebuffer {
             // EAGL idiom: re-bind the wrapper FBO for the renderbuffer.
             let fbo = self.wrapper_fbo_for_renderbuffer(guest);
             unsafe {
-                gl21::BindFramebufferEXT(gl30::FRAMEBUFFER, fbo);
+                gl30::BindFramebuffer(gl30::FRAMEBUFFER, fbo);
             }
         } else {
             self.bind(gl30::FRAMEBUFFER, guest);
@@ -281,8 +281,8 @@ impl Gles2DefaultFramebuffer {
 
     unsafe fn get_renderbuffer_parameter(&self, renderbuffer: GLuint, pname: GLenum) -> GLint {
         let mut value = 0;
-        gl21::BindRenderbufferEXT(gl21::RENDERBUFFER_EXT, renderbuffer);
-        gl21::GetRenderbufferParameterivEXT(gl21::RENDERBUFFER_EXT, pname, &mut value);
+        gl30::BindRenderbuffer(gl21::RENDERBUFFER_EXT, renderbuffer);
+        gl30::GetRenderbufferParameteriv(gl21::RENDERBUFFER_EXT, pname, &mut value);
         value
     }
 
@@ -357,8 +357,23 @@ pub struct GLES2OnGL2Context {
 }
 
 impl GLES2OnGL2Context {
+    /// Whether the GLES2-on-GL2 layer runs on an ES 3.0 context rather than a
+    /// desktop GL 2.1 compatibility context. True on Android (where no
+    /// desktop GL exists), or when forced via
+    /// `TOUCHHLE_FORCE_GLES3_CONTEXT=1` (useful for testing the ES 3.0 code
+    /// path on desktop).
+    pub fn uses_gles3_context() -> bool {
+        cfg!(target_os = "android")
+            || std::env::var_os("TOUCHHLE_FORCE_GLES3_CONTEXT").is_some()
+    }
+
     pub fn new(window: &mut Window) -> Result<Self, String> {
-        let gl_ctx: GLContext = window.create_gl_context(GLVersion::GL21Compat)?;
+        let version = if Self::uses_gles3_context() {
+            GLVersion::GLES30
+        } else {
+            GLVersion::GL21Compat
+        };
+        let gl_ctx: GLContext = window.create_gl_context(version)?;
         Ok(Self {
             inner: GLES1OnGL2Context::new_with_context(gl_ctx),
             default_framebuffer: Gles2DefaultFramebuffer::default(),
@@ -481,7 +496,7 @@ impl<'a> GLES2Active<'a> {
                     .default_framebuffer
                     .guest_fbo_names
                     .contains(&framebuffer)
-                && gl21::IsRenderbufferEXT(framebuffer) != 0
+                && gl30::IsRenderbuffer(framebuffer) != 0
             {
                 // EAGL idiom: the guest bound a renderbuffer name (the
                 // drawable's storage) as a framebuffer.
@@ -491,7 +506,7 @@ impl<'a> GLES2Active<'a> {
                 if target == gl30::FRAMEBUFFER || target == gl30::DRAW_FRAMEBUFFER {
                     self.default_framebuffer.current_guest_framebuffer = framebuffer;
                 }
-                gl21::BindFramebufferEXT(target, fbo);
+                gl30::BindFramebuffer(target, fbo);
             } else {
                 self.default_framebuffer.bind(target, framebuffer);
             }
@@ -524,6 +539,10 @@ impl<'a> GLES2Active<'a> {
             gl30::BindFramebuffer(gl30::FRAMEBUFFER, fb.fbo);
             gl30::ReadBuffer(gl30::COLOR_ATTACHMENT0);
         }
+        unsafe {
+            let err = gl21::GetError();
+            log!("DBG read: after bind err={err:#x}");
+        }
         let mut pixels = vec![0u8; (width * height * 4) as usize];
         unsafe {
             gl30::ReadPixels(
@@ -535,6 +554,10 @@ impl<'a> GLES2Active<'a> {
                 gl30::UNSIGNED_BYTE,
                 pixels.as_mut_ptr() as *mut _,
             );
+        }
+        unsafe {
+            let err = gl21::GetError();
+            log!("DBG read: after ReadPixels err={err:#x} first={:?}", &pixels[..8]);
         }
         for px in pixels.as_mut_slice().as_chunks_mut::<4>().0 {
             px.swap(0, 2);
