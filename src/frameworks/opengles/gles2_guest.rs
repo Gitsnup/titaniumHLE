@@ -1400,9 +1400,7 @@ fn glGetRenderbufferParameteriv(
     });
 }
 fn glGenerateMipmap(env: &mut Environment, target: GLenum) {
-    with_gles2_and_mem(env, |_gles, _mem| unsafe {
-        gl30::GenerateMipmap(target)
-    });
+    with_gles2_and_mem(env, |_gles, _mem| unsafe { gl30::GenerateMipmap(target) });
 }
 
 // Clearing

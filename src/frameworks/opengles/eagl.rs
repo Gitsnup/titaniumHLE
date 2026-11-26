@@ -59,16 +59,6 @@ const kEAGLRenderingAPIOpenGLES2: EAGLRenderingAPI = 2;
 #[allow(dead_code)]
 const kEAGLRenderingAPIOpenGLES3: EAGLRenderingAPI = 3;
 
-#[allow(non_snake_case)]
-fn create_gles2_ctx(env: &mut Environment) -> crate::gles::gles2_on_gl2::GLES2OnGL2Context {
-    let window = env
-        .window
-        .as_mut()
-        .expect("OpenGL ES is not supported in headless mode");
-    crate::gles::gles2_on_gl2::GLES2OnGL2Context::new(window)
-        .expect("Couldn't create OpenGL ES 2.0 context!")
-}
-
 pub(super) struct EAGLContextHostObject {
     pub(super) gles_ctx: Option<Box<dyn GLESContext>>,
     /// Which rendering API this context was created with (1 = GLES 1.1,
@@ -124,7 +114,6 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithAPI:(EAGLRenderingAPI)api sharegroup:(id)group {
-    log!("DBG initWithAPI:sharegroup: api={} group={:?}", api, group);
     if api != kEAGLRenderingAPIOpenGLES1 && api != kEAGLRenderingAPIOpenGLES2 {
         log!(
             "TODO: App requested EAGL initWithAPI:{} sharegroup:{:?}, returning nil as we only support APIs 1 and 2 for now",
@@ -149,10 +138,14 @@ pub const CLASSES: ClassExports = objc_classes! {
         let _prev_ctx = prev_context.make_current(window);
     }
     // Context sharing is only possible between compatible context versions.
-    // On platforms where the GLES 2.0 path uses an ES 3.0 context (e.g.
-    // Android/EGL), sharing with the guest's other contexts (potentially
-    // ES 1.1) isn't supported by the driver, so skip it.
-    if !crate::gles::gles2_on_gl2::GLES2OnGL2Context::uses_gles3_context() {
+    // On platforms where the GLES 2.0 path uses an ES 3.0 host context (e.g.
+    // Android/EGL), sharing that with other contexts (e.g. a native ES 1.1
+    // context) isn't supported by the driver, so skip it in that one case.
+    // ES 1.1-on-ES 1.1 sharing (like PvZ's two native contexts) must keep
+    // working everywhere, so only skip when both conditions hold.
+    if !(api == kEAGLRenderingAPIOpenGLES2
+        && crate::gles::gles2_on_gl2::GLES2OnGL2Context::uses_gles3_context())
+    {
         env.window.as_mut().unwrap().set_share_with_current_context(true);
     }
 
@@ -179,7 +172,6 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithAPI:(EAGLRenderingAPI)api {
-    log!("DBG initWithAPI: api={}", api);
     if api != kEAGLRenderingAPIOpenGLES1 && api != kEAGLRenderingAPIOpenGLES2 {
         log!(
             "TODO: App requested EAGL initWithAPI:{}, returning nil as we only support APIs 1 and 2 for now",

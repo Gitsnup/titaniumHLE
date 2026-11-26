@@ -786,7 +786,6 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(clock()),
     export_c_func!(time(_)),
     export_c_func!(difftime(_, _)),
-
     export_c_func!(tzset()),
     export_c_func!(gmtime_r(_, _)),
     export_c_func!(gmtime(_)),

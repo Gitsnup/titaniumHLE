@@ -389,7 +389,6 @@ fn unsetenv(env: &mut Environment, name: ConstPtr<u8>) -> i32 {
 /// doesn't match the emulator's transparent malloc layout. Panicking there
 /// makes such apps unplayable, so instead we log and return, and the caller
 /// proceeds (leaking the block if the free was bogus).
-
 /// Stub for `___assert_rtn` (libSystem's assertion failure routine, also used
 /// as a general compiler support function). Like our `abort()` workaround, log
 /// it and try to continue rather than killing the app.
@@ -411,7 +410,6 @@ fn assert_rtn(
 fn abort_no_return_workaround(_env: &mut Environment) {
     log!("Warning: App called abort()! Trying to continue (this is a leak and may misbehave).");
 }
-
 
 fn exit(env: &mut Environment, exit_code: i32) {
     // TODO: handle errno properly

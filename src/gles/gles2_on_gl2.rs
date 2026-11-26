@@ -363,8 +363,7 @@ impl GLES2OnGL2Context {
     /// `TOUCHHLE_FORCE_GLES3_CONTEXT=1` (useful for testing the ES 3.0 code
     /// path on desktop).
     pub fn uses_gles3_context() -> bool {
-        cfg!(target_os = "android")
-            || std::env::var_os("TOUCHHLE_FORCE_GLES3_CONTEXT").is_some()
+        cfg!(target_os = "android") || std::env::var_os("TOUCHHLE_FORCE_GLES3_CONTEXT").is_some()
     }
 
     pub fn new(window: &mut Window) -> Result<Self, String> {
@@ -539,10 +538,6 @@ impl<'a> GLES2Active<'a> {
             gl30::BindFramebuffer(gl30::FRAMEBUFFER, fb.fbo);
             gl30::ReadBuffer(gl30::COLOR_ATTACHMENT0);
         }
-        unsafe {
-            let err = gl21::GetError();
-            log!("DBG read: after bind err={err:#x}");
-        }
         let mut pixels = vec![0u8; (width * height * 4) as usize];
         unsafe {
             gl30::ReadPixels(
@@ -554,10 +549,6 @@ impl<'a> GLES2Active<'a> {
                 gl30::UNSIGNED_BYTE,
                 pixels.as_mut_ptr() as *mut _,
             );
-        }
-        unsafe {
-            let err = gl21::GetError();
-            log!("DBG read: after ReadPixels err={err:#x} first={:?}", &pixels[..8]);
         }
         for px in pixels.as_mut_slice().as_chunks_mut::<4>().0 {
             px.swap(0, 2);

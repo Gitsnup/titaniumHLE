@@ -40,7 +40,6 @@ fn alarm(_env: &mut Environment, _seconds: u32) -> u32 {
     0
 }
 
-
 fn usleep(env: &mut Environment, useconds: useconds_t) -> i32 {
     // TODO: handle errno properly
     set_errno(env, 0);
@@ -199,7 +198,6 @@ fn sysconf(_env: &mut Environment, name: i32) -> i32 {
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(sleep(_)),
     export_c_func!(alarm(_)),
-
     export_c_func!(usleep(_)),
     export_c_func!(getpid()),
     export_c_func!(getppid()),

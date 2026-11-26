@@ -1240,8 +1240,7 @@ impl Window {
         // bindings request. Fall back to the unsuffixed name.
         for suffix in ["EXT", "OES"] {
             if let Some(stem) = procname.strip_suffix(suffix) {
-                let fallback =
-                    self.video_ctx.gl_get_proc_address(stem) as *const std::ffi::c_void;
+                let fallback = self.video_ctx.gl_get_proc_address(stem) as *const std::ffi::c_void;
                 if !fallback.is_null() {
                     log!(
                         "GL proc address fallback: {} not found, using {}",
